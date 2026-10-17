@@ -16,6 +16,9 @@ const navLinks = [
   ['Artists', '/artists'], ['Blogs', '/blog'], ['Contact', '/contact'], ['Registration', '/artist/register'],
 ] as const
 
+const whatsappMessage = 'Hello The Haat of Art team! I would like to know more about your exhibitions, stall booking and visitor passes. Please share the details. Thank you!'
+const whatsappUrl = `https://wa.me/918052696360?text=${encodeURIComponent(whatsappMessage)}`
+
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 export function PublicShell({ children, logoUrl = '/media/logo.png', logoAlt = 'The Haat of Art', footerVariant = 'default' }: {
@@ -110,7 +113,9 @@ export function PublicShell({ children, logoUrl = '/media/logo.png', logoAlt = '
           <span>Designed with <b>♥</b> for the Art Community</span>
         </div>
       </footer>
-      {footerVariant === 'highlights' && <a className="wa-btn" href="https://wa.me/917304645333" target="_blank" rel="noreferrer" aria-label="Chat on WhatsApp">WhatsApp</a>}
+      <a className="wa-btn" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="Chat with us on WhatsApp" title="Chat with us on WhatsApp">
+        <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" fill="currentColor"><path d="M16.04 3C9.4 3 4 8.38 4 15c0 2.12.56 4.18 1.6 6L4 29l8.2-1.56A12 12 0 0 0 16.04 28C22.68 28 28 22.62 28 16S22.68 3 16.04 3Zm0 21.9c-1.8 0-3.56-.5-5.1-1.4l-.36-.22-4.86.92.96-4.7-.24-.38A9.9 9.9 0 0 1 6.1 15c0-5.46 4.46-9.9 9.94-9.9 5.5 0 9.9 4.44 9.9 9.9s-4.4 9.9-9.9 9.9Zm5.44-7.4c-.3-.14-1.76-.86-2.04-.96-.26-.1-.46-.14-.66.14-.2.3-.76.96-.94 1.16-.16.2-.34.22-.64.08-1.76-.88-2.9-1.58-4.06-3.56-.3-.52.3-.48.88-1.62.1-.2.04-.36-.02-.5-.08-.14-.66-1.6-.9-2.18-.24-.58-.48-.5-.66-.5h-.56c-.2 0-.5.08-.76.36-.26.3-1 .98-1 2.4s1.02 2.78 1.16 2.98c.14.2 2.02 3.08 4.9 4.32 1.82.78 2.54.84 3.46.7.56-.08 1.76-.72 2-1.42.24-.7.24-1.3.18-1.42-.08-.12-.28-.2-.58-.34Z"/></svg>
+      </a>
     </main>
   )
 }

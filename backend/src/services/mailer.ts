@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { sendWhatsApp, sendWhatsAppToEmail } from './whatsapp.js'
 
 const transport = process.env.SMTP_HOST ? nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -13,7 +14,15 @@ export async function sendEmail(to: string, subject: string, text: string) {
   return { configured: true, accepted: result.accepted.includes(to) }
 }
 
-export async function queueEmail(to: string, template: string, text: string) {
+export async function queueEmail(to: string, template: string, text: string, options: { whatsapp?: 'always' | 'consented' | 'off'; whatsappPhone?: string } = {}) {
+  const mode = options.whatsapp ?? 'always'
+  if (mode !== 'off') {
+    const message = `${template}\n\n${text}`
+    const task = options.whatsappPhone
+      ? sendWhatsApp(options.whatsappPhone, message)
+      : sendWhatsAppToEmail(to, message, { requireConsent: mode === 'consented' })
+    void task.catch(() => undefined)
+  }
   const id = crypto.randomUUID()
   const { pool } = await import('../db/pool.js')
   await pool.query('INSERT INTO email_delivery_records(id,recipient_email,template,status) VALUES (?,?,?,\'QUEUED\')', [id, to, template])

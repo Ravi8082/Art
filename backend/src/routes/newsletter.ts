@@ -86,7 +86,7 @@ export async function notifyNewsletterSubscribers(post: { id: string; title: str
       `Read the story: ${articleUrl}`,
       `Unsubscribe: ${unsubscribeUrl}`,
     ].filter(Boolean).join('\n\n')
-    return queueEmail(subscriber.email, `New from The Haat of Art: ${post.title}`, text)
+    return queueEmail(subscriber.email, `New from The Haat of Art: ${post.title}`, text, { whatsapp: 'consented' })
   }))
   for (const outcome of outcomes) {
     if (outcome.status === 'rejected') console.error('Newsletter delivery could not be queued', outcome.reason)

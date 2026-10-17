@@ -52,7 +52,8 @@ passesRouter.post('/public/indore/register', publicRegistrationLimit, async (req
     [challengeId, event.id, email, input.fullName, input.phone, input.city, input.attendingAs, input.marketingConsent, hashOtp(code), expiresAt])
 
     const delivery = await queueEmail(email, 'Verify your free Haat of Art entry pass',
-      `Your verification code is ${code}. It expires in 5 minutes. Use it on the registration page to confirm your free entry pass.`)
+      `Your verification code is ${code}. It expires in 5 minutes. Use it on the registration page to confirm your free entry pass.`,
+      { whatsappPhone: input.phone })
     if (!delivery.delivered) {
       await pool.query('DELETE FROM visitor_registration_challenges WHERE id=?', [challengeId])
       console.error('Visitor entry-pass verification email could not be delivered', { reason: delivery.reason })
@@ -153,8 +154,8 @@ passesRouter.post('/public/indore/verify', publicVerificationLimit, async (req, 
       }
     })
     if (!result.pass) return res.status(result.status).json({ error: result.error })
-    const emailDelivery = await queueEmail(email, 'Your Haat of Art free entry pass',
-      `Your free entry pass for ${result.pass.eventTitle} is confirmed. Open this link to view your pass: ${process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000'}/visitor/pass/${encodeURIComponent(result.pass.qrData)}`)
+    const passMessage = `Your free entry pass for ${result.pass.eventTitle} is confirmed. Open this link to view your pass: ${process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000'}/visitor/pass/${encodeURIComponent(result.pass.qrData)}`
+    const emailDelivery = await queueEmail(email, 'Your Haat of Art free entry pass', passMessage)
     if (!emailDelivery.delivered) {
       console.error('Visitor entry-pass confirmation email could not be delivered', { reason: emailDelivery.reason })
     }

@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Play, MapPin, Trophy, Star, Users, Heart } from 'lucide-react'
 import { demoAbout } from '@/lib/demo-home-content'
@@ -9,15 +8,14 @@ import { SafeImage } from './safe-image'
 const icons = { trophy: Trophy, star: Star, users: Users, heart: Heart }
 
 export function AboutSection({ image, alt, videoUrl }: { image?: string; alt?: string; videoUrl?: string | null }) {
-  const [playing, setPlaying] = useState(false)
   return (
     <section className="th-about">
       <div className="th-about-video">
-        {playing && videoUrl
-          ? <video src={videoUrl} controls autoPlay playsInline />
+        {videoUrl
+          ? <video src={videoUrl} poster={image ?? demoAbout.image} controls autoPlay loop muted playsInline preload="auto" aria-label="The Haat of Art introduction video" />
           : <>
             <SafeImage src={image ?? demoAbout.image} alt={alt ?? demoAbout.caption} fallback={demoAbout.image} />
-            <button className="th-play" onClick={() => videoUrl && setPlaying(true)} aria-label={videoUrl ? 'Play video' : 'Demo video not uploaded yet'} title={videoUrl ? 'Play video' : 'Demo: video not uploaded yet'}><Play size={22} fill="currentColor" /></button>
+            <button className="th-play" disabled aria-label="Demo video not uploaded yet" title="Demo: video not uploaded yet"><Play size={22} fill="currentColor" /></button>
             <div className="th-about-caption"><span><MapPin size={13} /> {demoAbout.caption}</span><span>{demoAbout.duration}</span></div>
           </>}
       </div>
