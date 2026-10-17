@@ -1,0 +1,184 @@
+/* Stall & Floor Plan Manager — every rule is scoped under .asm (components/admin-stalls-manager.tsx).
+   Rules that target buttons, inputs or selects are written as `.asm .asm-*` so they outrank the
+   `.event-form button` / `.event-form input` shell rules in globals.css regardless of import order. */
+
+.asm .event-admin-header,
+.asm section.event-form { width: min(100%, 1080px); margin-inline: auto; }
+.asm section.event-form { margin-bottom: 24px; gap: 16px; }
+.asm .event-form h2 { margin: 0; font: 700 15px var(--font-poppins, sans-serif); color: #0f1e36; }
+.asm h3 { margin: 0; }
+.asm select {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #f3dcc8;
+  border-radius: 5px;
+  background: #fff;
+  color: #0f1e36;
+  font: inherit;
+}
+.asm select:focus { outline: 2px solid rgba(240, 82, 23, .22); border-color: var(--copper); }
+.asm select:disabled { opacity: .6; }
+
+.asm .asm-ghost,
+.asm .asm-danger { background: #fff; color: #555f64; border: 1px solid #d9d7d0; }
+.asm .asm-danger { color: #a33d32; border-color: #e3b7b1; }
+.asm .asm-ghost:hover,
+.asm .asm-danger:hover { background: #f4efe7; color: #4a545e; }
+
+/* ---------- 1. exhibition summary ---------- */
+.asm-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.asm-summary div { padding: 13px 15px; border: 1px solid #f3dcc8; border-radius: 9px; background: #fff7ee; }
+.asm-summary dt { color: #7d8792; font: 700 10px/1.4 var(--font-poppins, sans-serif); letter-spacing: .6px; text-transform: uppercase; }
+.asm-summary dd { margin: 5px 0 0; color: #0f1e36; font: 600 13px/1.45 var(--font-poppins, sans-serif); overflow-wrap: anywhere; }
+.asm-deadline { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.asm-deadline label { flex: 1 1 220px; }
+.asm .asm-deadline button { justify-self: auto; }
+
+/* ---------- 2. stall type table ---------- */
+.asm-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+.asm-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 12px; }
+.asm-table th {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #f3dcc8;
+  color: #777d81;
+  font: 700 10px var(--font-poppins, sans-serif);
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.asm-table td { padding: 9px 8px; border-bottom: 1px solid #f2e9df; color: #293850; vertical-align: middle; }
+.asm tbody tr:not(.asm-edit-row):hover td { background: #fff7ee; }
+.asm-mono { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #46536b; white-space: nowrap; }
+.asm-nowrap { white-space: nowrap; }
+.asm-price { white-space: nowrap; font-weight: 600; color: #172a3c; }
+.asm-includes { min-width: 220px; max-width: 300px; color: #5a6472; line-height: 1.5; overflow-wrap: anywhere; }
+.asm-empty { text-align: center; color: #9aa0a3; padding: 20px 8px; }
+.asm .asm-status {
+  justify-self: auto;
+  padding: 5px 12px;
+  border: 1px solid #b6d7bd;
+  border-radius: 999px;
+  background: #e9f5ea;
+  color: #3c7a48;
+  font: 600 10px var(--font-poppins, sans-serif);
+  white-space: nowrap;
+}
+.asm .asm-status:hover { background: #dcefde; }
+.asm-actions { display: flex; flex-wrap: wrap; gap: 6px; white-space: nowrap; }
+.asm .asm-actions button { justify-self: auto; padding: 8px 12px; border-radius: 6px; font-size: 11px; }
+.asm-edit-row td,
+.asm-edit-row:hover td { background: #fff7ee; }
+.asm-type-edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.asm-type-edit .asm-actions { grid-column: 1 / -1; align-items: end; }
+
+/* ---------- shared add rows ---------- */
+.asm-add-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) auto; gap: 12px; align-items: end; }
+.asm-add-row label { min-width: 0; }
+.asm .asm-add-row button { justify-self: auto; white-space: nowrap; }
+.asm-wide { grid-column: 1 / -1; }
+.asm-type-add { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.asm .asm-type-add > button { justify-self: start; }
+
+/* ---------- 3. floor plan ---------- */
+.asm-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.asm-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid #e6e1d8;
+  border-radius: 999px;
+  background: #fff;
+  color: #46536b;
+  font: 600 11px var(--font-poppins, sans-serif);
+}
+.asm-legend-item i { width: 11px; height: 11px; border-radius: 3px; background: var(--asm-c); }
+.asm-group { display: grid; gap: 10px; padding-top: 4px; }
+.asm-group-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ece8e0;
+  color: #172a3c;
+  font: 700 13px var(--font-poppins, sans-serif);
+}
+.asm-group-heading small { color: #7d8792; font: 600 11px var(--font-poppins, sans-serif); }
+.asm-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.asm .asm-cell {
+  display: grid;
+  place-items: center;
+  justify-self: stretch;
+  min-height: 58px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--asm-c);
+  color: #fff;
+  font: 700 12px/1.2 var(--font-poppins, sans-serif);
+  text-align: center;
+  cursor: pointer;
+}
+.asm .asm-cell:hover { filter: brightness(.94); }
+.asm .asm-cell:disabled { opacity: .65; cursor: wait; }
+.asm .asm-cell.is-disabled { color: #4a5563; }
+.asm .asm-cell.is-selected { box-shadow: 0 0 0 2px #172a3c; }
+.asm-cell-code { overflow-wrap: anywhere; }
+.asm-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e2dcd1;
+  border-radius: 10px;
+  background: #fbf8f3;
+}
+.asm-editor-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: #172a3c; font-size: 13px; }
+.asm-editor-head strong { font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.asm-editor-head small { color: #7d8792; font-size: 11px; }
+.asm-editor .asm-actions { grid-column: 1 / -1; }
+.asm-editor > .event-form-note { grid-column: 1 / -1; }
+.asm .asm-chip {
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--asm-c);
+  color: #fff;
+  font: 700 10px var(--font-poppins, sans-serif);
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.asm .asm-chip.is-disabled { color: #4a5563; }
+
+/* status colours mirror the public floor plan legend */
+.asm .is-available { --asm-c: #2e9e5b; }
+.asm .is-held { --asm-c: #ee4b12; }
+.asm .is-booked { --asm-c: #d92b2b; }
+.asm .is-disabled { --asm-c: #c9ced6; }
+
+@media (max-width: 720px) {
+  .asm-add-row,
+  .asm-type-add,
+  .asm-editor,
+  .asm-type-edit { grid-template-columns: 1fr; }
+  .asm .asm-add-row > button,
+  .asm .asm-type-add > button { justify-self: start; }
+  .asm-summary { grid-template-columns: 1fr 1fr; }
+  .asm .asm-deadline button { width: 100%; justify-self: stretch; }
+  .asm-cells { grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); }
+  .asm .asm-cell { min-height: 50px; font-size: 11px; }
+}
+
+@media (max-width: 380px) {
+  .asm-summary { grid-template-columns: 1fr; }
+  .asm-cells { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; }
+  .asm .asm-cell { min-height: 46px; font-size: 10.5px; }
+}
