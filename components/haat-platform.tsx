@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import QRCode from 'qrcode'
+import { visitorPassUrl } from '@/lib/visitor-pass-url'
 import {
   Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown,
-  CircleAlert, ClipboardList, FileCheck2, GalleryVerticalEnd, Image, LayoutDashboard,
-  LogOut, Mail, Menu, QrCode, Search, Settings, ShieldCheck, Store, Users, Wallet, X,
+  CircleAlert, ClipboardList, FileCheck2, GalleryVerticalEnd, Heart, Image, LayoutDashboard,
+  LogOut, Mail, MapPin, Menu, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, Users, Wallet, X,
 } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
@@ -18,18 +20,39 @@ const dashboardRoles = [
 type DashboardRole = (typeof dashboardRoles)[number]
 type DashboardUser = { id: string; email: string; fullName: string; roles: string[]; permissions: string[] }
 type DashboardItem = { id?: string; title: string; detail?: string; status?: string; createdAt?: string; reference?: string; mediaUrl?: string | null; kind?: string }
+type EventStaffEvent = { id: string; title: string; city: string; venue: string; startsAt: string; endsAt: string; status: string; registrations: number; checkedIn: number }
+type VisitorEvent = { id: string; title: string; city: string; venue: string; description: string; startsAt: string; endsAt: string; mediaUrl: string | null }
+type VisitorRegistration = VisitorEvent & { registrationId: string; passId: string | null; status: string; createdAt: string; mediaId: string | null; revokedAt: string | null; checkedInAt: string | null; qrData: string | null }
 type DashboardSummary = {
   role: DashboardRole
   metrics: { label: string; value: number | string; detail: string; tone: string }[]
   sections: { title: string; items: DashboardItem[] }[]
   contentOverview?: {
     media: DashboardItem[]
+    pages: DashboardItem[]
     artists: DashboardItem[]
     artworks: DashboardItem[]
     partners: DashboardItem[]
     recentActivity: DashboardItem[]
     altText: { total: number; described: number }
     serviceStatus: { application: string; database: string }
+  }
+  eventStaffOverview?: {
+    events: EventStaffEvent[]
+    registrations: (DashboardItem & { eventId: string; eventTitle: string; email: string; checkedInAt: string | null })[]
+    checkIns: (DashboardItem & { eventId: string; eventTitle: string; email: string })[]
+    dailyCheckIns: { day: string; total: number }[]
+  }
+  visitorOverview?: {
+    fullName: string
+    registrations: VisitorRegistration[]
+    upcoming: VisitorEvent[]
+    blogs: (DashboardItem & { excerpt: string; author: string; publishedAt: string })[]
+    artists: DashboardItem[]
+    totals: { stories: number; artists: number }
+  }
+  artistOverview?: {
+    upcomingEvents: VisitorEvent[]
   }
 }
 type DashboardReports = {
@@ -71,14 +94,14 @@ const roleInfo: Record<DashboardRole, { label: string; title: (name: string) => 
     quote: 'Art brings people together.',
   },
   CONTENT_MANAGER: {
-    label: 'Content Manager', title: (name) => `Welcome back, ${name}!`,
+    label: 'Content Manager', title: () => 'Welcome back, Content Manager!',
     subtitle: 'Manage the stories, media and pages that bring The Haat of Art to life.',
     quote: 'Great art deserves a greater story.',
   },
   REGISTRATION_MANAGER: {
-    label: 'Registration & Event Staff', title: (name) => `Welcome, ${name}!`,
-    subtitle: 'Review event registrations and stay on top of attendee check-in activity.',
-    quote: 'Every visitor adds a new story.',
+    label: 'Event Staff', title: () => 'Welcome to Event Dashboard, Event Staff!',
+    subtitle: 'Manage registrations, verify QR passes and help every visitor enjoy the exhibition.',
+    quote: 'Every visitor adds a new story to the world of art.',
   },
   ARTIST_EXHIBITOR: {
     label: 'Artist / Exhibitor', title: (name) => `Welcome back, ${name}!`,
@@ -87,7 +110,7 @@ const roleInfo: Record<DashboardRole, { label: string; title: (name: string) => 
   },
   VISITOR: {
     label: 'Visitor', title: (name) => `Welcome back, ${name}!`,
-    subtitle: 'Discover exhibitions and keep track of your event registrations.',
+    subtitle: 'Explore art exhibitions, meet inspiring artists and keep every visitor pass ready.',
     quote: 'Art connects people, ideas and cultures.',
   },
 }
@@ -125,31 +148,43 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
   ],
   CONTENT_MANAGER: [
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Website Content', href: '/dashboard/content', icon: BookOpen },
+    { label: 'Website Content', href: '/dashboard/content', icon: BookOpen, group: 'Content & design' },
     { label: 'Homepage Media', href: '/dashboard/homepage-media', icon: Image },
     { label: 'About Page', href: '/dashboard/about', icon: GalleryVerticalEnd },
-    { label: 'Contact Page', href: '/dashboard/contact-page', icon: Users },
+    { label: 'Contact Page', href: '/dashboard/contact-page', icon: Users, group: 'Management' },
     { label: 'Guests & Feedback', href: '/dashboard/guests', icon: Users },
-    { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays },
+    { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays, group: 'Events' },
   ],
   REGISTRATION_MANAGER: [
-    { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Upcoming Exhibitions', href: '/exhibitions/events', icon: CalendarDays },
-    { label: 'Scan Visitor Passes', href: '/dashboard/check-in', icon: QrCode },
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Event Selection', href: '/exhibitions/events', icon: CalendarDays, group: 'Event operations' },
+    { label: 'Visitor Registrations', href: '/dashboard/check-in', icon: Users, group: 'Entry desk' },
+    { label: 'QR Scanner', href: '/dashboard/check-in', icon: QrCode },
+    { label: 'Attendee Lookup', href: '/dashboard/check-in', icon: Search },
   ],
   ARTIST_EXHIBITOR: [
-    { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'My Applications & Bookings', href: '/artist/bookings', icon: FileCheck2 },
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'My Profile', href: '/artist/profile', icon: Users },
-    { label: 'Add Artwork', href: '/artist/artworks/new', icon: Image },
-    { label: 'Plans', href: '/artist/plans', icon: Store },
+    { label: 'My Artwork', href: '/artist/artworks/new', icon: Image },
+    { label: 'Exhibition Applications', href: '/artist/bookings', icon: FileCheck2 },
+    { label: 'Stall Bookings', href: '/artist/bookings', icon: Store },
+    { label: 'My Subscriptions', href: '/artist/plans', icon: Wallet },
+    { label: 'Earnings & Payments', href: '/artist/bookings', icon: Activity },
+    { label: 'Blogs', href: '/blog', icon: BookOpen, group: 'Discover' },
+    { label: 'Gallery', href: '/gallery', icon: GalleryVerticalEnd },
+    { label: 'Event Calendar', href: '/exhibitions/events', icon: CalendarDays },
+    { label: 'Settings', href: '/artist/profile', icon: Settings, group: 'Support' },
+    { label: 'Help & Support', href: '/contact', icon: Mail },
   ],
   VISITOR: [
-    { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Upcoming Exhibitions', href: '/exhibitions/events', icon: CalendarDays },
-    { label: 'My Visitor Passes', href: '/dashboard/passes', icon: QrCode },
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'My Registrations', href: '/dashboard/passes', icon: TicketCheck, group: 'My events' },
+    { label: 'My QR Passes', href: '/dashboard/passes', icon: QrCode },
+    { label: 'Upcoming Exhibitions', href: '/exhibitions/events', icon: CalendarDays, group: 'Discover' },
+    { label: 'Artist Directory', href: '/artists', icon: Users },
+    { label: 'Blogs', href: '/blog', icon: BookOpen },
     { label: 'Gallery', href: '/gallery', icon: Image },
-    { label: 'Latest Stories', href: '/blog', icon: BookOpen },
+    { label: 'Notifications & Preferences', href: '/dashboard/passes', icon: Bell, group: 'Account' },
   ],
 }
 
@@ -354,6 +389,13 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
         .toLowerCase().includes(searchQuery.trim().toLowerCase())),
     }))
     : sections
+  const searchPlaceholder = role === 'CONTENT_MANAGER'
+    ? 'Search pages, media, artists…'
+    : role === 'REGISTRATION_MANAGER'
+      ? 'Search visitors, events, check-ins…'
+      : role === 'ARTIST_EXHIBITOR'
+        ? 'Search your applications and bookings…'
+        : 'Search bookings, applications…'
   const notificationHref = role === 'SUPER_ADMIN'
     ? '/dashboard/audit'
     : role === 'ADMIN'
@@ -382,7 +424,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
               </Link>
             </div>
           ))}
-          {role !== 'SUPER_ADMIN' && <><p className="role-nav-label role-nav-label-gap">Quick links</p>
+          {role !== 'SUPER_ADMIN' && role !== 'ARTIST_EXHIBITOR' && <><p className="role-nav-label role-nav-label-gap">Quick links</p>
             {actions[role].slice(0, 3).map(({ label, href, icon: Icon }) => (
               <Link href={href} key={label} className="role-nav-link" onClick={() => setMenuOpen(false)}><Icon size={17} /><span>{label}</span></Link>
             ))}</>}
@@ -396,7 +438,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
         <header className="role-topbar">
           <div className="role-breadcrumb"><span>Workspace</span><span>/</span><strong>{info.label}</strong></div>
           <div className="role-topbar-actions">
-            <label className="role-search"><Search size={15} /><input aria-label="Search recent dashboard activity" placeholder="Search bookings, applications…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></label>
+            <label className="role-search"><Search size={15} /><input aria-label="Search dashboard content" placeholder={searchPlaceholder} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></label>
             <Link className="role-notice" href={notificationHref} aria-label="Open recent dashboard activity"><Bell size={18} /></Link>
             {allowedRoles.length > 1 && (
               <label className="role-switcher-label"><span className="sr-only">Switch workspace</span>
@@ -409,10 +451,10 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
           </div>
         </header>
         <div className="role-content">
-          <section className="role-welcome">
-            <img src="/media/hero-exhibition.jpg" alt="Visitors exploring an art exhibition" />
+          <section className={`role-welcome${role === 'REGISTRATION_MANAGER' ? ' event-staff-welcome' : ''}${role === 'VISITOR' ? ' visitor-welcome' : ''}${role === 'ARTIST_EXHIBITOR' ? ' artist-welcome' : ''}`}>
+            <img src={role === 'CONTENT_MANAGER' || role === 'REGISTRATION_MANAGER' || role === 'VISITOR' ? '/media/exhibition-gallery.jpeg' : '/media/hero-exhibition.jpg'} alt="Visitors exploring an art exhibition" />
             <div className="role-welcome-shade" />
-            <div className="role-welcome-copy"><p className="role-eyebrow">{new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</p><h1>{role === 'SUPER_ADMIN' ? <>Welcome back,<br /><strong>Super Admin!</strong></> : role === 'ADMIN' ? <>Welcome back,<br /><strong>{firstName}!</strong></> : info.title(firstName)}</h1><p>{info.subtitle}</p></div>
+            <div className="role-welcome-copy"><p className="role-eyebrow">{new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</p><h1>{role === 'SUPER_ADMIN' ? <>Welcome back,<br /><strong>Super Admin!</strong></> : role === 'ADMIN' ? <>Welcome back,<br /><strong>{firstName}!</strong></> : role === 'CONTENT_MANAGER' ? <>Welcome back,<br /><strong>Content Manager!</strong></> : role === 'REGISTRATION_MANAGER' ? <>Welcome to Event Dashboard,<br /><strong>Event Staff!</strong></> : role === 'VISITOR' ? <>Welcome back,<br /><strong>{firstName}!</strong></> : info.title(firstName)}</h1><p>{info.subtitle}</p></div>
             <blockquote>{info.quote}</blockquote>
           </section>
           {pageState === 'error' && <p className="role-error role-inline-error" role="alert">{error}</p>}
@@ -427,8 +469,14 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
             : role === 'ADMIN'
               ? <AdminDashboardOverview reports={reports} system={system} extraErrors={extraErrors} sections={filteredSections} />
               : role === 'CONTENT_MANAGER'
-                ? <ContentManagerOverview overview={summary.contentOverview} sections={filteredSections} />
-            : <section className="role-dashboard-grid">
+                ? <ContentManagerOverview overview={summary.contentOverview} sections={filteredSections} searchQuery={searchQuery} />
+                : role === 'REGISTRATION_MANAGER'
+                  ? <EventStaffOverview overview={summary.eventStaffOverview} searchQuery={searchQuery} />
+                  : role === 'VISITOR'
+                    ? <VisitorDashboard overview={summary.visitorOverview} searchQuery={searchQuery} />
+                      : role === 'ARTIST_EXHIBITOR'
+                        ? <ArtistExhibitorOverview user={user} overview={summary.artistOverview} sections={filteredSections} metrics={summary.metrics} searchQuery={searchQuery} />
+                : <section className="role-dashboard-grid">
             <div className="role-panel role-activity-panel">
               <div className="role-panel-heading"><div><p className="role-eyebrow">Workspace overview</p><h2>{sections[0]?.title ?? 'Your activity'}</h2></div><Activity size={18} /></div>
               <DashboardList items={filteredSections[0]?.items ?? []} empty={searchQuery ? 'No activity matches your search.' : 'Nothing here yet. New activity will appear as it becomes available.'} />
@@ -451,21 +499,399 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
   )
 }
 
+function ArtistExhibitorOverview({
+  user,
+  overview,
+  sections,
+  metrics,
+  searchQuery,
+}: {
+  user: DashboardUser
+  overview: DashboardSummary['artistOverview']
+  sections: DashboardSummary['sections']
+  metrics: DashboardSummary['metrics']
+  searchQuery: string
+}) {
+  const query = searchQuery.trim().toLowerCase()
+  const matches = (item: DashboardItem) => !query || `${item.title} ${item.detail ?? ''} ${item.status ?? ''} ${item.reference ?? ''}`.toLowerCase().includes(query)
+  const applications = (sections.find((section) => section.title === 'My exhibition applications')?.items ?? []).filter(matches)
+  const bookings = (sections.find((section) => section.title === 'My stall bookings')?.items ?? []).filter(matches)
+  const events = (overview?.upcomingEvents ?? []).filter((event) =>
+    !query || `${event.title} ${event.city} ${event.venue}`.toLowerCase().includes(query))
+  const paidMetric = metrics.find((metric) => metric.label === 'Total paid')
+  const recentActivity = [
+    ...applications.map((item) => ({ ...item, kind: 'Application' })),
+    ...bookings.map((item) => ({ ...item, kind: 'Stall booking' })),
+  ].sort((left, right) => new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime()).slice(0, 4)
+  const quickActions = [
+    { label: 'Apply for an Exhibition', href: '/book-your-stall', icon: CalendarDays, tone: 'coral' },
+    { label: 'Upload Artwork', href: '/artist/artworks/new', icon: Image, tone: 'blue' },
+    { label: 'Manage Applications', href: '/artist/bookings', icon: FileCheck2, tone: 'green' },
+    { label: 'Explore Plans', href: '/artist/plans', icon: Wallet, tone: 'violet' },
+  ]
+  const initials = user.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'HA'
+
+  return (
+    <div className="artist-dashboard">
+      <section className="artist-dashboard-top-grid">
+        <div className="role-panel artist-profile-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Your workspace</p><h2>Profile Overview</h2></div><Link href="/artist/profile" className="role-panel-link">Edit profile <ArrowRight size={12} /></Link></div>
+          <div className="artist-profile-summary">
+            <span className="artist-profile-avatar">{initials}</span>
+            <div><strong>{user.fullName}</strong><span>Artist / Exhibitor</span><small>{user.email}</small></div>
+          </div>
+          <div className="artist-profile-detail"><span>Account type</span><strong>Artist &amp; Exhibitor</strong></div>
+          <div className="artist-profile-detail"><span>Applications</span><strong>{formatMetric(metrics.find((metric) => metric.label === 'Applications')?.value ?? 0, 'Applications')}</strong></div>
+          <Link href="/artist/profile" className="artist-secondary-link">View and update your profile <ArrowRight size={13} /></Link>
+        </div>
+
+        <div className="role-panel artist-portfolio-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Portfolio</p><h2>My Artwork</h2></div><Image size={17} /></div>
+          <div className="artist-portfolio-empty">
+            <span><Image size={23} /></span>
+            <strong>Your portfolio starts here</strong>
+            <p>Add artwork to build your profile and support exhibition applications.</p>
+            <Link href="/artist/artworks/new" className="artist-primary-link"><Image size={13} /> Add Artwork</Link>
+          </div>
+        </div>
+
+        <div className="role-panel artist-plan-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Membership</p><h2>Subscription Plan</h2></div><Wallet size={17} /></div>
+          <div className="artist-plan-callout"><span><Store size={18} /></span><strong>Artist plans</strong><p>Explore available options for your artist profile and exhibition journey.</p></div>
+          <Link href="/artist/plans" className="artist-primary-link">View Plans <ArrowRight size={13} /></Link>
+        </div>
+      </section>
+
+      <section className="artist-dashboard-middle-grid">
+        <div className="role-panel artist-upcoming-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Find your next opportunity</p><h2>Upcoming Exhibitions</h2></div><Link href="/exhibitions/events" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {events.length
+            ? <div className="artist-upcoming-list">{events.slice(0, 3).map((event) => (
+              <article className="artist-upcoming-event" key={event.id}>
+                {event.mediaUrl ? <img src={`${apiBase}${event.mediaUrl}`} alt="" /> : <span className="artist-event-placeholder"><CalendarDays size={17} /></span>}
+                <div><strong>{event.title}</strong><small><CalendarDays size={11} /> {formatEventDate(event.startsAt)}</small><small><MapPin size={11} /> {[event.city, event.venue].filter(Boolean).join(', ') || 'Venue to be announced'}</small></div>
+                <Link href="/book-your-stall">Apply</Link>
+              </article>
+            ))}</div>
+            : <p className="artist-empty">{query ? 'No upcoming exhibitions match your search.' : 'No upcoming exhibitions are listed right now.'}</p>}
+        </div>
+
+        <div className="role-panel artist-applications-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Your submissions</p><h2>Exhibition Applications</h2></div><Link href="/artist/bookings" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          <ArtistDashboardList items={applications.slice(0, 4)} empty={query ? 'No applications match your search.' : 'Your submitted applications will appear here.'} />
+        </div>
+
+        <div className="role-panel artist-bookings-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Reserved spaces</p><h2>Stall Bookings</h2></div><Link href="/artist/bookings" className="role-panel-link">Manage <ArrowRight size={12} /></Link></div>
+          <ArtistDashboardList items={bookings.slice(0, 3)} empty={query ? 'No bookings match your search.' : 'Your stall bookings will appear here.'} />
+        </div>
+      </section>
+
+      <section className="artist-dashboard-bottom-grid">
+        <div className="role-panel artist-activity-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Latest updates</p><h2>Recent Activity</h2></div><Activity size={17} /></div>
+          {recentActivity.length
+            ? <ul className="artist-activity-list">{recentActivity.map((item, index) => (
+              <li key={`${item.kind}-${item.reference ?? item.title}-${index}`}>
+                <span className="artist-activity-icon">{item.kind === 'Application' ? <FileCheck2 size={13} /> : <Store size={13} />}</span>
+                <div><strong>{item.title}</strong><small>{item.kind}{item.detail ? ` · ${item.detail}` : ''}</small></div>
+                <span className={`role-status ${statusTone(item.status ?? '')}`}>{(item.status ?? 'Submitted').replaceAll('_', ' ')}</span>
+              </li>
+            ))}</ul>
+            : <p className="artist-empty">{query ? 'No activity matches your search.' : 'Your recent applications and bookings will show here.'}</p>}
+        </div>
+
+        <div className="role-panel artist-earnings-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Confirmed stall bookings</p><h2>Earnings &amp; Payments</h2></div><Wallet size={17} /></div>
+          <strong className="artist-earnings-total">{formatMetric(paidMetric?.value ?? 0, 'Total paid')}</strong>
+          <p>Amount paid for confirmed bookings</p>
+          <div className="artist-earnings-note"><span><Check size={12} /></span><span>Payment totals update when a stall booking is confirmed.</span></div>
+          <Link href="/artist/bookings" className="artist-secondary-link">View booking payments <ArrowRight size={13} /></Link>
+        </div>
+
+        <div className="role-panel artist-quick-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Shortcuts</p><h2>Quick Actions</h2></div><ArrowRight size={16} /></div>
+          <div className="artist-quick-grid">{quickActions.map(({ label, href, icon: Icon, tone }) => (
+            <Link href={href} key={label} className={`role-action ${tone}`}><Icon size={15} /><span>{label}</span><ArrowRight size={12} /></Link>
+          ))}</div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function ArtistDashboardList({ items, empty }: { items: DashboardItem[]; empty: string }) {
+  if (!items.length) return <p className="artist-empty">{empty}</p>
+  return <div className="artist-record-list">{items.map((item, index) => (
+    <article key={`${item.reference ?? item.title}-${index}`}>
+      <span className="artist-record-icon">{index === 0 ? <FileCheck2 size={14} /> : <Activity size={14} />}</span>
+      <div><strong>{item.title}</strong><small>{item.reference ? `${item.reference} · ` : ''}{item.detail || (item.createdAt ? formatDate(item.createdAt) : '')}</small></div>
+      <span className={`role-status ${statusTone(item.status ?? '')}`}>{(item.status ?? 'Submitted').replaceAll('_', ' ')}</span>
+    </article>
+  ))}</div>
+}
+
+function VisitorDashboard({
+  overview,
+  searchQuery,
+}: {
+  overview: DashboardSummary['visitorOverview']
+  searchQuery: string
+}) {
+  const query = searchQuery.trim().toLowerCase()
+  const matches = (item: { title: string; detail?: string; city?: string; venue?: string; author?: string }) =>
+    !query || `${item.title} ${item.detail ?? ''} ${item.city ?? ''} ${item.venue ?? ''} ${item.author ?? ''}`
+      .toLowerCase().includes(query)
+  const registrations = (overview?.registrations ?? []).filter(matches)
+  const activePass = registrations.find((item) => item.qrData)
+  const upcoming = (overview?.upcoming ?? []).filter(matches)
+  const blogs = (overview?.blogs ?? []).filter(matches)
+  const artists = (overview?.artists ?? []).filter(matches)
+  const quickActions = [
+    { label: 'Register for an Exhibition', href: '/exhibitions/events', icon: CalendarDays, tone: 'coral' },
+    { label: 'View My QR Passes', href: '/dashboard/passes', icon: QrCode, tone: 'blue' },
+    { label: 'Explore Artists', href: '/artists', icon: Users, tone: 'green' },
+    { label: 'Read Latest Blogs', href: '/blog', icon: BookOpen, tone: 'violet' },
+    { label: 'Browse Gallery', href: '/gallery', icon: Image, tone: 'amber' },
+    { label: 'Edit Preferences', href: '/dashboard/passes', icon: Settings, tone: 'blue' },
+  ]
+
+  return (
+    <div className="visitor-dashboard">
+      <section className="visitor-dashboard-top-grid">
+        <div className="role-panel visitor-upcoming-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Discover art near you</p><h2>Upcoming Exhibition</h2></div><Link href="/exhibitions/events" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {upcoming[0]
+            ? <article className="visitor-featured-event">
+              <img src={upcoming[0].mediaUrl ? `${apiBase}${upcoming[0].mediaUrl}` : '/media/exhibition-gallery.jpeg'} alt={`${upcoming[0].title} exhibition`} />
+              <div className="visitor-featured-copy">
+                <span className="visitor-event-date"><CalendarDays size={13} /> {formatEventDate(upcoming[0].startsAt)}</span>
+                <h3>{upcoming[0].title}</h3>
+                <p><MapPin size={13} /> {[upcoming[0].venue, upcoming[0].city].filter(Boolean).join(' · ') || 'Venue to be announced'}</p>
+                <small>{upcoming[0].description}</small>
+                <Link href="/dashboard/passes" className="visitor-inline-button">Register &amp; get pass <ArrowRight size={12} /></Link>
+              </div>
+            </article>
+            : <p className="role-empty">{query ? 'No upcoming exhibitions match your search.' : 'No upcoming exhibitions are open right now.'}</p>}
+        </div>
+
+        <div className="role-panel visitor-qr-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Ready for entry</p><h2>My QR Pass</h2></div><Link href="/dashboard/passes" className="role-panel-link">All passes <ArrowRight size={12} /></Link></div>
+          {activePass
+            ? <VisitorPassPreview pass={activePass} fullName={overview?.fullName ?? ''} />
+            : <div className="visitor-no-pass"><QrCode size={34} /><strong>No active pass yet</strong><span>Register for an exhibition to get your entry QR.</span><Link href="/dashboard/passes">Browse available passes <ArrowRight size={12} /></Link></div>}
+        </div>
+
+        <div className="role-panel visitor-registrations-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Your events</p><h2>My Registrations</h2></div><Link href="/dashboard/passes" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {registrations.length
+            ? <div className="visitor-registration-list">{registrations.slice(0, 4).map((item) => <article className="visitor-registration-card" key={item.registrationId}>
+              <img src={item.mediaUrl ? `${apiBase}${item.mediaUrl}` : '/media/exhibition-gallery.jpeg'} alt="" />
+              <div><strong>{item.title}</strong><small>{formatEventDate(item.startsAt)} · {[item.city, item.venue].filter(Boolean).join(', ')}</small><span className={`visitor-dashboard-status ${statusTone(item.status)}`}>{item.status}</span></div>
+              <Link href="/dashboard/passes" aria-label={`View ${item.title} pass`}><QrCode size={15} /></Link>
+            </article>)}</div>
+            : <p className="role-empty">{query ? 'No registrations match your search.' : 'Your event registrations will appear here.'}</p>}
+        </div>
+      </section>
+
+      <section className="visitor-dashboard-bottom-grid">
+        <div className="role-panel visitor-recommended-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Selected for you</p><h2>Recommended for You</h2></div><Link href="/exhibitions/events" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {upcoming.length
+            ? <div className="visitor-recommend-grid">{upcoming.slice(0, 3).map((event) => <article className="visitor-recommend-card" key={event.id}>
+              <img src={event.mediaUrl ? `${apiBase}${event.mediaUrl}` : '/media/exhibition-gallery.jpeg'} alt={`${event.title} exhibition`} />
+              <strong>{event.title}</strong><small><CalendarDays size={11} /> {formatEventDate(event.startsAt)}</small><small><MapPin size={11} /> {[event.city, event.venue].filter(Boolean).join(', ')}</small>
+              <Link href="/dashboard/passes">Register Now</Link>
+            </article>)}</div>
+            : <p className="role-empty">{query ? 'No events match your search.' : 'New exhibition recommendations will appear here.'}</p>}
+        </div>
+
+        <div className="role-panel visitor-blogs-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Ideas &amp; inspiration</p><h2>Latest Blogs</h2></div><Link href="/blog" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {blogs.length
+            ? <div className="visitor-blog-list">{blogs.slice(0, 3).map((post) => <Link href={`/blog/${post.id}`} className="visitor-blog-card" key={post.id ?? post.title}>
+              <img src={post.mediaUrl ? `${apiBase}${post.mediaUrl}` : '/media/visual-art.jpeg'} alt="" />
+              <span><strong>{post.title}</strong><small>By {post.author} · {formatDate(post.publishedAt)}</small><small>{post.excerpt}</small></span>
+            </Link>)}</div>
+            : <p className="role-empty">{query ? 'No blogs match your search.' : 'No published blog posts yet.'}</p>}
+        </div>
+
+        <div className="role-panel visitor-actions-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Your art journey</p><h2>Quick Actions</h2></div><ArrowRight size={16} /></div>
+          <div className="visitor-quick-grid">{quickActions.map(({ label, href, icon: Icon, tone }) => <Link href={href} key={label} className={`role-action ${tone}`}><Icon size={15} /><span>{label}</span><ArrowRight size={12} /></Link>)}</div>
+          <div className="visitor-artist-preview">
+            <div><p className="role-eyebrow">Meet the community</p><h3>Artist Directory</h3></div><Link href="/artists">Explore artists <ArrowRight size={12} /></Link>
+            {artists.slice(0, 3).map((artist) => <Link href={artist.id ? `/artists/${artist.id}` : '/artists'} className="visitor-artist-chip" key={artist.id ?? artist.title}>
+              <span>{artist.title.slice(0, 1).toUpperCase()}</span><strong>{artist.title}</strong><small>{artist.detail || 'The Haat of Art'}</small>
+            </Link>)}
+            {!artists.length && <p className="role-empty">Artist profiles will appear here.</p>}
+          </div>
+        </div>
+      </section>
+
+      <p className="visitor-favourite-note"><Heart size={13} /> Event favourites are not saved in your account yet. Browse exhibitions to discover your next favourite.</p>
+    </div>
+  )
+}
+
+function VisitorPassPreview({ pass, fullName }: { pass: VisitorRegistration; fullName: string }) {
+  const [qrImage, setQrImage] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    const publicPassUrl = visitorPassUrl(pass.qrData ?? '', window.location.origin)
+    setError('')
+    void QRCode.toDataURL(publicPassUrl, { errorCorrectionLevel: 'M', margin: 1, width: 160 })
+      .then((image) => { if (active) setQrImage(image) })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : 'Could not generate your pass QR code.')
+      })
+    return () => { active = false }
+  }, [pass.qrData])
+
+  return (
+    <div className="visitor-pass-preview">
+      <div className="visitor-pass-preview-qr">
+        {qrImage ? <img src={qrImage} alt={`QR entry pass for ${pass.title}`} /> : error ? <span role="alert">{error}</span> : <span>Preparing QR…</span>}
+      </div>
+      <div className="visitor-pass-preview-details"><span className="visitor-dashboard-status good">Valid pass</span><strong>{pass.title}</strong><small>{fullName} · Visitor</small><small><CalendarDays size={12} /> {formatEventDate(pass.startsAt)}</small><small><MapPin size={12} /> {[pass.city, pass.venue].filter(Boolean).join(', ')}</small>
+        {qrImage && <a href={qrImage} download={`haat-of-art-pass-${pass.passId}.png`} className="visitor-download-pass"><TicketCheck size={13} /> Download Pass QR</a>}
+        {pass.qrData && <Link href={`/visitor/pass/${encodeURIComponent(pass.qrData)}`} className="visitor-pass-info-link" target="_blank">View scan details</Link>}
+      </div>
+    </div>
+  )
+}
+
+function EventStaffOverview({
+  overview,
+  searchQuery,
+}: {
+  overview: DashboardSummary['eventStaffOverview']
+  searchQuery: string
+}) {
+  const events = overview?.events ?? []
+  const [selectedEventId, setSelectedEventId] = useState(events[0]?.id ?? '')
+  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0]
+  const query = searchQuery.trim().toLowerCase()
+  const checkIns = (overview?.checkIns ?? []).filter((entry) =>
+    (!selectedEvent || entry.eventId === selectedEvent.id)
+    && (!query || `${entry.title} ${entry.email} ${entry.eventTitle}`.toLowerCase().includes(query)))
+  const registrations = (overview?.registrations ?? []).filter((entry) =>
+    (!selectedEvent || entry.eventId === selectedEvent.id)
+    && entry.status !== 'Checked in'
+    && (!query || `${entry.title} ${entry.email} ${entry.eventTitle}`.toLowerCase().includes(query)))
+  const daily = overview?.dailyCheckIns ?? []
+  const maxDaily = Math.max(1, ...daily.map((item) => Number(item.total)))
+  const quickActions = [
+    { label: 'Scan QR Pass', href: '/dashboard/check-in', icon: QrCode, tone: 'coral' },
+    { label: 'Manual Check-in', href: '/dashboard/check-in', icon: Check, tone: 'blue' },
+    { label: 'Search Attendee', href: '/dashboard/check-in', icon: Search, tone: 'green' },
+    { label: 'Choose Event', href: '/exhibitions/events', icon: CalendarDays, tone: 'violet' },
+  ]
+
+  return (
+    <div className="event-staff-overview">
+      <section className="event-staff-top-grid">
+        <div className="role-panel event-staff-event-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Event selection</p><h2>Select Event</h2></div><Link href="/exhibitions/events" className="role-panel-link">All events <ArrowRight size={12} /></Link></div>
+          {events.length
+            ? <>
+              <label className="event-staff-select-label" htmlFor="staff-event-select">Published exhibition</label>
+              <select id="staff-event-select" className="event-staff-event-select" value={selectedEvent?.id ?? ''} onChange={(event) => setSelectedEventId(event.target.value)}>
+                {events.map((event) => <option key={event.id} value={event.id}>{event.title}{event.city ? ` · ${event.city}` : ''}</option>)}
+              </select>
+              {selectedEvent && <div className="event-staff-event-card">
+                <img src="/media/exhibition-gallery.jpeg" alt="Art exhibition gallery" />
+                <div><strong>{selectedEvent.title}</strong><small>{selectedEvent.status} · {selectedEvent.city || selectedEvent.venue}</small><small>{formatEventDate(selectedEvent.startsAt)} · {selectedEvent.venue}</small></div>
+                <Link href="/dashboard/check-in">Event desk <ArrowRight size={12} /></Link>
+              </div>}
+            </>
+            : <p className="role-empty">No published exhibitions are open or recently completed.</p>}
+        </div>
+
+        <div className="role-panel event-staff-capacity-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Selected exhibition</p><h2>Check-in Progress</h2></div><Activity size={17} /></div>
+          {selectedEvent
+            ? <>
+              <div className="event-staff-progress-copy"><strong>{selectedEvent.checkedIn.toLocaleString('en-IN')} / {selectedEvent.registrations.toLocaleString('en-IN')}</strong><span>{selectedEvent.registrations ? Math.round(selectedEvent.checkedIn / selectedEvent.registrations * 100) : 0}% checked in</span></div>
+              <div className="event-staff-progress-track"><span style={{ width: `${selectedEvent.registrations ? Math.min(100, selectedEvent.checkedIn / selectedEvent.registrations * 100) : 0}%` }} /></div>
+              <p className="event-staff-progress-note">Checked-in visitors compared with registered attendees.</p>
+              <div className="event-staff-stat-row"><div><strong>{selectedEvent.registrations.toLocaleString('en-IN')}</strong><small>Registered</small></div><div><strong>{selectedEvent.checkedIn.toLocaleString('en-IN')}</strong><small>Checked in</small></div><div><strong>{Math.max(0, selectedEvent.registrations - selectedEvent.checkedIn).toLocaleString('en-IN')}</strong><small>Remaining</small></div></div>
+            </>
+            : <p className="role-empty">Choose a published event to view its check-in progress.</p>}
+        </div>
+
+        <div className="role-panel event-staff-actions-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Registration desk</p><h2>Quick Actions</h2></div><ArrowRight size={16} /></div>
+          <div className="event-staff-quick-grid">{quickActions.map(({ label, href, icon: Icon, tone }) => <Link href={href} key={label} className={`role-action ${tone}`}><Icon size={16} /><span>{label}</span><ArrowRight size={13} /></Link>)}</div>
+        </div>
+      </section>
+
+      <section className="event-staff-main-grid">
+        <div className="role-panel event-staff-scanner-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Secure entry</p><h2>Live QR Scanner</h2></div><QrCode size={18} /></div>
+          <div className="event-staff-scanner-visual"><QrCode size={76} /><span>Open the scanner to validate a visitor pass</span></div>
+          <Link className="role-primary-button event-staff-scanner-link" href="/dashboard/check-in">Open QR Scanner <ArrowRight size={14} /></Link>
+          <p className="event-staff-scanner-note">Camera scanning and manual pass entry are available at the secure check-in desk.</p>
+        </div>
+        <div className="role-panel event-staff-table-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Entry desk</p><h2>Recent Check-ins</h2></div><Link href="/dashboard/check-in" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          {checkIns.length
+            ? <div className="event-staff-table-wrap"><table className="event-staff-table"><thead><tr><th>#</th><th>Visitor</th><th>Event</th><th>Check-in time</th><th>Status</th></tr></thead><tbody>{checkIns.slice(0, 6).map((item, index) => <tr key={item.id ?? `${item.title}-${index}`}><td>{index + 1}</td><td><strong>{item.title}</strong><small>{item.email}</small></td><td>{item.eventTitle}</td><td>{item.createdAt ? formatDate(item.createdAt) : '—'}</td><td><span className="event-staff-checked-status">Checked In</span></td></tr>)}</tbody></table></div>
+            : <p className="role-empty">{query ? 'No check-ins match your search.' : 'No check-ins recorded for this event yet.'}</p>}
+        </div>
+      </section>
+
+      <section className="event-staff-bottom-grid">
+        <div className="role-panel event-staff-chart-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Recent activity</p><h2>Check-ins · Last 7 Days</h2></div><Activity size={17} /></div>
+          {daily.length
+            ? <div className="event-staff-chart" aria-label="Daily check-in counts for the last seven days">{daily.map((day) => <div className="event-staff-chart-column" key={day.day}><span>{Number(day.total).toLocaleString('en-IN')}</span><i style={{ height: `${Math.max(5, Number(day.total) / maxDaily * 100)}%` }} /><small>{formatShortDay(day.day)}</small></div>)}</div>
+            : <p className="role-empty">No check-ins were recorded in the last seven days.</p>}
+        </div>
+        <div className="role-panel event-staff-pending-panel">
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Visitor registrations</p><h2>Pending Check-ins</h2></div><Link href="/dashboard/check-in" className="role-panel-link">Find attendee <ArrowRight size={12} /></Link></div>
+          {registrations.length
+            ? <ul className="event-staff-pending-list">{registrations.slice(0, 6).map((item, index) => <li key={item.id ?? `${item.title}-${index}`}><span className="event-staff-pending-avatar">{item.title.slice(0, 1).toUpperCase()}</span><span><strong>{item.title}</strong><small>{item.eventTitle} · {item.email}</small></span><span className="event-staff-pending-tag">Registered</span></li>)}</ul>
+            : <p className="role-empty">{query ? 'No registrations match your search.' : 'No registered visitors are waiting for check-in.'}</p>}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function formatEventDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+}
+
+function formatShortDay(value: string) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' }).format(date)
+}
+
 function ContentManagerOverview({
   overview,
   sections,
+  searchQuery,
 }: {
   overview: DashboardSummary['contentOverview']
   sections: DashboardSummary['sections']
+  searchQuery: string
 }) {
-  const blogs = sections.find((section) => section.title === 'Recent blog posts')?.items ?? []
-  const pages = [
-    { title: 'Home Page', href: '/dashboard/content' },
-    { title: 'About Us', href: '/dashboard/about' },
-    { title: 'Exhibitions', href: '/dashboard/events' },
-    { title: 'Gallery', href: '/dashboard/homepage-media' },
-    { title: 'Contact Us', href: '/dashboard/contact-page' },
-  ]
+  const query = searchQuery.trim().toLowerCase()
+  const matches = (item: DashboardItem) => !query
+    || `${item.title} ${item.detail ?? ''} ${item.status ?? ''} ${item.kind ?? ''}`
+      .toLowerCase().includes(query)
+  const blogs = (sections.find((section) => section.title === 'Recent blog posts')?.items ?? []).filter(matches)
+  const pages = (overview?.pages ?? []).filter(matches)
+  const media = (overview?.media ?? []).filter(matches)
+  const artists = (overview?.artists ?? []).filter(matches)
+  const artworks = (overview?.artworks ?? []).filter(matches)
+  const partners = (overview?.partners ?? []).filter(matches)
+  const activity = (overview?.recentActivity ?? []).filter(matches)
   const quickActions = [
     { label: 'Edit Website Pages', href: '/dashboard/content', icon: BookOpen, tone: 'coral' },
     { label: 'Upload Banner', href: '/dashboard/homepage-media', icon: Image, tone: 'blue' },
@@ -475,7 +901,7 @@ function ContentManagerOverview({
     { label: 'Update Contact Info', href: '/dashboard/contact-page', icon: Mail, tone: 'blue' },
     { label: 'Manage Exhibitions', href: '/dashboard/events', icon: CalendarDays, tone: 'coral' },
     { label: 'Open Content Workspace', href: '/dashboard/content', icon: Settings, tone: 'violet' },
-  ]
+  ].filter((action) => !query || action.label.toLowerCase().includes(query))
   const altCoverage = overview?.altText.total
     ? Math.round((overview.altText.described / overview.altText.total) * 100)
     : 100
@@ -489,20 +915,22 @@ function ContentManagerOverview({
             {pages.map((page, index) => <div className="content-page-row" key={page.title}>
               <span className="content-page-number">{String(index + 1).padStart(2, '0')}</span>
               <strong>{page.title}</strong>
-              <span className="content-live-status">Live</span>
-              <Link href={page.href}>Edit</Link>
+              <span className="content-live-status" data-status={page.status}>{page.status}</span>
+              <span className="content-page-updated">{page.createdAt ? `Updated ${formatDate(page.createdAt)}` : 'No publish record'}</span>
+              <Link href={page.title === 'Home Page' ? '/dashboard/content' : page.title === 'About Us' ? '/dashboard/about' : page.title === 'Exhibitions' ? '/dashboard/events' : page.title === 'Gallery' ? '/dashboard/homepage-media' : '/dashboard/contact-page'}>Edit</Link>
             </div>)}
+            {!pages.length && <p className="role-empty">{query ? 'No pages match your search.' : 'No page data is available.'}</p>}
           </div>
         </div>
 
         <div className="role-panel content-manager-media">
           <div className="role-panel-heading"><div><p className="role-eyebrow">Media library</p><h2>Recent Media Uploads</h2></div><Link href="/dashboard/homepage-media" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
-          {overview?.media.length
-            ? <div className="content-media-grid">{overview.media.slice(0, 6).map((item) => <Link href="/dashboard/homepage-media" className="content-media-card" key={`${item.kind}-${item.title}`}>
+          {media.length
+            ? <div className="content-media-grid">{media.slice(0, 6).map((item) => <Link href="/dashboard/homepage-media" className="content-media-card" key={`${item.kind}-${item.title}`}>
               {item.mediaUrl ? <img src={`${apiBase}${item.mediaUrl}`} alt={item.detail || item.title} /> : <span className="content-media-placeholder"><Image size={18} /></span>}
               <strong>{item.title}</strong><small>{item.kind} · {item.createdAt ? formatDate(item.createdAt) : 'Recently updated'}</small>
             </Link>)}</div>
-            : <p className="role-empty">No media uploads have been added yet.</p>}
+            : <p className="role-empty">{query ? 'No media matches your search.' : 'No media uploads have been added yet.'}</p>}
         </div>
 
         <div className="role-panel content-manager-quick">
@@ -518,11 +946,11 @@ function ContentManagerOverview({
         </div>
         <div className="role-panel">
           <div className="role-panel-heading"><div><p className="role-eyebrow">Public directory</p><h2>Artist Profiles</h2></div><Link href="/artists" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
-          <ContentDashboardList items={overview?.artists ?? []} empty="No artist profiles are available." />
+          <ContentDashboardList items={artists} empty={query ? 'No artists match your search.' : 'No artist profiles are available.'} />
         </div>
         <div className="role-panel">
           <div className="role-panel-heading"><div><p className="role-eyebrow">Public gallery</p><h2>Gallery Photos</h2></div><Link href="/gallery" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
-          <ContentDashboardList items={overview?.artworks ?? []} empty="No artwork has been added to the gallery." />
+          <ContentDashboardList items={artworks} empty={query ? 'No artwork matches your search.' : 'No artwork has been added to the gallery.'} />
         </div>
       </section>
 
@@ -531,17 +959,17 @@ function ContentManagerOverview({
           <div className="role-panel-heading"><div><p className="role-eyebrow">Accessibility check</p><h2>Content &amp; Media Health</h2></div><Link href="/dashboard/homepage-media" className="role-panel-link">Review <ArrowRight size={12} /></Link></div>
           <div className="content-health-list">
             <ContentHealthRow label="Image descriptions" value={`${overview?.altText.described ?? 0}/${overview?.altText.total ?? 0}`} detail={`${altCoverage}% have alt text`} healthy={altCoverage === 100} />
-            <ContentHealthRow label="Public pages" value="5" detail="Content areas available" healthy />
+            <ContentHealthRow label="Published pages" value={`${overview?.pages.filter((page) => page.status === 'Published').length ?? 0}/5`} detail="Pages currently published" healthy={(overview?.pages.filter((page) => page.status === 'Published').length ?? 0) === 5} />
             <ContentHealthRow label="Published blogs" value="Live" detail="Approved stories appear on the site" healthy />
           </div>
         </div>
         <div className="role-panel">
           <div className="role-panel-heading"><div><p className="role-eyebrow">Latest updates</p><h2>Content Activity</h2></div><Link href="/dashboard/content" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
-          <ContentDashboardList items={overview?.recentActivity ?? []} empty="Recent content changes will appear here." />
+          <ContentDashboardList items={activity} empty={query ? 'No activity matches your search.' : 'Recent content changes will appear here.'} />
         </div>
         <div className="role-panel">
           <div className="role-panel-heading"><div><p className="role-eyebrow">Public collaborators</p><h2>Partners &amp; Mentors</h2></div><Link href="/dashboard/about" className="role-panel-link">Manage <ArrowRight size={12} /></Link></div>
-          <ContentDashboardList items={overview?.partners ?? []} empty="No partners, mentors or guests are listed yet." />
+          <ContentDashboardList items={partners} empty={query ? 'No partners match your search.' : 'No partners, mentors or guests are listed yet.'} />
           <div className="content-service-status">
             <span><i /> Website API</span><strong>{overview?.serviceStatus.application ?? 'Checking'}</strong>
             <span><i /> Database</span><strong>{overview?.serviceStatus.database ?? 'Checking'}</strong>
@@ -873,6 +1301,7 @@ function Brand() {
 }
 
 function MetricIcon({ label }: { label: string }) {
+  if (/favourite|favorite/i.test(label)) return <Heart size={18} />
   if (/visitor|user|artist|application/i.test(label)) return <Users size={18} />
   if (/pass|check.?in/i.test(label)) return <QrCode size={18} />
   if (/stall|booking|payment|revenue/i.test(label)) return <Store size={18} />

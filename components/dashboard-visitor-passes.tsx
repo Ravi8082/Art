@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import QRCode from 'qrcode'
 import { ArrowLeft, CalendarDays, Check, MapPin, QrCode, TicketCheck } from 'lucide-react'
+import { visitorPassUrl } from '@/lib/visitor-pass-url'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
@@ -166,7 +167,8 @@ function VisitorPassCard({ pass }: { pass: VisitorPass }) {
   useEffect(() => {
     if (!pass.qrData) return
     let active = true
-    void QRCode.toDataURL(pass.qrData, { errorCorrectionLevel: 'M', margin: 1, width: 200 })
+    const publicPassUrl = visitorPassUrl(pass.qrData, window.location.origin)
+    void QRCode.toDataURL(publicPassUrl, { errorCorrectionLevel: 'M', margin: 1, width: 200 })
       .then((image) => { if (active) setQrImage(image) })
       .catch(() => { if (active) setQrError('QR code could not be displayed. Please reload this page.') })
     return () => { active = false }
@@ -177,7 +179,7 @@ function VisitorPassCard({ pass }: { pass: VisitorPass }) {
       <div className="visitor-pass-card-title"><div><p className="role-eyebrow">The Haat of Art</p><h3>{pass.title}</h3><span>{dateLabel(pass.startsAt)}{pass.city ? ` · ${pass.city}` : ''}</span></div><span className={`visitor-pass-status ${pass.status === 'Active' ? 'active' : ''}`}>{pass.status}</span></div>
       <div className="visitor-pass-body">
         <div className="visitor-qr-frame">{qrImage ? <img src={qrImage} alt={`QR entry pass for ${pass.title}`} /> : pass.qrData ? <span className="role-spinner" /> : <span>Pass unavailable</span>}</div>
-        <div><p><CalendarDays size={14} /> {dateLabel(pass.startsAt)}</p><p><MapPin size={14} /> {[pass.venue, pass.city].filter(Boolean).join(' · ') || 'Venue to be announced'}</p>{pass.checkedInAt && <p><Check size={14} /> Checked in {dateLabel(pass.checkedInAt)}</p>}<small>Present this QR code at the event entrance. It can only be checked in once.</small>{qrError && <p className="role-access-validation" role="alert">{qrError}</p>}</div>
+        <div><p><CalendarDays size={14} /> {dateLabel(pass.startsAt)}</p><p><MapPin size={14} /> {[pass.venue, pass.city].filter(Boolean).join(' · ') || 'Venue to be announced'}</p>{pass.checkedInAt && <p><Check size={14} /> Checked in {dateLabel(pass.checkedInAt)}</p>}<small>Scan with Google Lens or the website check-in scanner. It can only be checked in once.</small>{pass.qrData && <Link href={`/visitor/pass/${encodeURIComponent(pass.qrData)}`} className="visitor-pass-info-link" target="_blank">View pass details</Link>}{qrError && <p className="role-access-validation" role="alert">{qrError}</p>}</div>
       </div>
     </article>
   )

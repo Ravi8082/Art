@@ -13,7 +13,7 @@ const links = [
 
 const navLinks = [
   ['Home', '/'], ['About', '/about'], ['Exhibitions', '/exhibitions'], ['Visitor Pass', '/indore#register'], ['Highlights', '/highlights'], ['Gallery', '/gallery'],
-  ['Artists', '/artists'], ['Blogs', '/blog'], ['Contact', '/contact'],
+  ['Artists', '/artists'], ['Blogs', '/blog'], ['Contact', '/contact'], ['Registration', '/artist/register'],
 ] as const
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
@@ -60,7 +60,7 @@ export function PublicShell({ children, logoUrl = '/media/logo.png', logoAlt = '
           {navLinks.map(([label, href]) => {
             const route = href.split('#')[0]
             const isCurrent = route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(`${route}/`)
-            return <Link href={href} key={href} aria-current={isCurrent ? 'page' : undefined} onClick={() => setOpen(false)}>{label}</Link>
+            return <Link href={href} key={href} className={href === '/artist/register' ? 'nav-registration' : undefined} aria-current={isCurrent ? 'page' : undefined} onClick={() => setOpen(false)}>{label}</Link>
           })}
           <Link className="public-search" href="/gallery" aria-label="Search the gallery"><Search size={17} /></Link>
         </nav>

@@ -19,6 +19,7 @@ const secret = () => {
 const issue = (id: string) => jwt.sign({ sub: id }, secret(), { expiresIn: '15m' })
 const otpRequestLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
 const otpVerifyLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
+const visitorResumeLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
 const setSession = (res: Response, id: string) => {
   res.cookie('session', issue(id), { httpOnly: true, signed: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 15 * 60 * 1000 })
 }
@@ -157,7 +158,12 @@ authRouter.post('/register-visitor', otpRequestLimit, async (req, res, next) => 
       const [roles] = await db.query<any[]>('SELECT id FROM roles WHERE name=?', ['VISITOR'])
       if (!roles.length) throw new Error('Visitor role is not configured')
       await db.query('INSERT INTO user_roles(user_id,role_id) VALUES (?,?)', [id, roles[0].id])
-      await db.query('INSERT INTO visitor_profiles(id,email,full_name) VALUES (?,?,?)', [crypto.randomUUID(), email, input.fullName])
+      const [profiles] = await db.query<any[]>('SELECT id FROM visitor_profiles WHERE email=? FOR UPDATE', [email])
+      if (profiles.length) {
+        await db.query('UPDATE visitor_profiles SET full_name=? WHERE id=?', [input.fullName, profiles[0].id])
+      } else {
+        await db.query('INSERT INTO visitor_profiles(id,email,full_name) VALUES (?,?,?)', [crypto.randomUUID(), email, input.fullName])
+      }
     })
     const mail = await createOtp(id, 'VERIFY_EMAIL', email)
     res.status(201).json({
@@ -170,6 +176,40 @@ authRouter.post('/register-visitor', otpRequestLimit, async (req, res, next) => 
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'An account already uses this email address' })
     }
+    next(error)
+  }
+})
+
+authRouter.post('/resume-visitor-registration', visitorResumeLimit, async (req, res, next) => {
+  try {
+    const input = z.object({ email: z.string().email().max(255) }).parse(req.body)
+    const email = input.email.toLowerCase()
+    const [users] = await pool.query<any[]>(`SELECT u.id,u.status,u.email_verified_at emailVerifiedAt
+      FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+      WHERE u.email=? AND r.name='VISITOR' LIMIT 1`, [email])
+    const user = users[0]
+    if (!user || user.status === 'SUSPENDED') {
+      return res.status(404).json({ error: 'No active visitor account was found for this email. Create an account or check the address.' })
+    }
+    if (user.emailVerifiedAt) {
+      return res.json({ verified: true, message: 'Your visitor account is verified. Sign in with the password you created.' })
+    }
+
+    const [challenges] = await pool.query<any[]>(`SELECT id FROM otp_challenges
+      WHERE user_id=? AND purpose='VERIFY_EMAIL' AND consumed_at IS NULL AND expires_at>NOW() AND attempts<5
+      ORDER BY created_at DESC LIMIT 1`, [user.id])
+    if (challenges.length) {
+      return res.json({ verified: false, otpSent: false, message: 'Your verification code is still active. Enter the code already sent to your email.' })
+    }
+
+    await pool.query(`UPDATE otp_challenges SET consumed_at=NOW()
+      WHERE user_id=? AND purpose='VERIFY_EMAIL' AND consumed_at IS NULL AND attempts>=5`, [user.id])
+    const delivery = await createOtp(user.id, 'VERIFY_EMAIL', email)
+    if (!delivery.delivered) {
+      return res.status(503).json({ error: 'We could not send the verification code. Please try again later.' })
+    }
+    res.json({ verified: false, otpSent: true, message: 'A new verification code has been sent to your email.' })
+  } catch (error) {
     next(error)
   }
 })

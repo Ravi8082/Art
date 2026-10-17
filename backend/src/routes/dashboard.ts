@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
+import { passTokenForId } from '../services/pass-token.js'
 
 export const dashboardRouter = Router()
 
@@ -363,7 +364,7 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
     }
 
     if (role === 'CONTENT_MANAGER') {
-      const [metricsResult, postsResult, mediaResult, artistsResult, artworksResult, partnersResult, activityResult, altTextResult] = await Promise.all([
+      const [metricsResult, postsResult, mediaResult, artistsResult, artworksResult, partnersResult, activityResult, altTextResult, pagesResult] = await Promise.all([
         pool.query<any[]>(`SELECT
           (SELECT COUNT(*) FROM site_content) contentEntries,
           (SELECT COUNT(*) FROM homepage_media) homepageMedia,
@@ -382,13 +383,13 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
             CONCAT('/api/homepage/media/', media_key) mediaUrl, updated_at createdAt
           FROM homepage_media WHERE mime_type LIKE 'image/%'
           UNION ALL
-          SELECT COALESCE(NULLIF(alt_text,''), kind) title, kind detail, 'Library' kind,
-            CONCAT('/api/about/media/', id) mediaUrl, created_at createdAt
-          FROM media_assets WHERE media_type='IMAGE' AND kind NOT LIKE 'application-%'
-          UNION ALL
           SELECT title, artist_name detail, 'Artwork' kind,
             CONCAT('/api/content/artworks/', id, '/image') mediaUrl, created_at createdAt
           FROM artworks
+          UNION ALL
+          SELECT name title, city detail, 'Artist' kind,
+            CONCAT('/api/content/artists/', id, '/photo') mediaUrl, created_at createdAt
+          FROM artists WHERE photo_mime LIKE 'image/%'
         ) recent ORDER BY createdAt DESC LIMIT 6`),
         pool.query<any[]>(`SELECT id, name title, city detail, photo_mime IS NOT NULL hasPhoto,
           created_at createdAt FROM artists ORDER BY created_at DESC LIMIT 5`),
@@ -419,9 +420,32 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
         ) activity ORDER BY createdAt DESC LIMIT 6`),
         pool.query<any[]>(`SELECT
           (SELECT COUNT(*) FROM homepage_media WHERE mime_type LIKE 'image/%')
-            + (SELECT COUNT(*) FROM media_assets WHERE media_type='IMAGE' AND kind NOT LIKE 'application-%') total,
+            + (SELECT COUNT(*) FROM artworks)
+            + (SELECT COUNT(*) FROM artists WHERE photo_mime LIKE 'image/%') total,
           (SELECT COUNT(*) FROM homepage_media WHERE mime_type LIKE 'image/%' AND TRIM(alt_text) <> '')
-            + (SELECT COUNT(*) FROM media_assets WHERE media_type='IMAGE' AND kind NOT LIKE 'application-%' AND TRIM(alt_text) <> '') described`),
+            + (SELECT COUNT(*) FROM artworks WHERE TRIM(title) <> '')
+            + (SELECT COUNT(*) FROM artists WHERE photo_mime LIKE 'image/%' AND TRIM(name) <> '') described`),
+        pool.query<any[]>(`SELECT page.title, page.status, page.updatedAt createdAt FROM (
+          SELECT 1 sortOrder, 'Home Page' title,
+            IF((SELECT COUNT(*) FROM homepage_media WHERE mime_type LIKE 'image/%') > 0, 'Published', 'Draft') status,
+            (SELECT MAX(updated_at) FROM homepage_media WHERE mime_type LIKE 'image/%') updatedAt
+          UNION ALL
+          SELECT 2, 'About Us',
+            IF((SELECT COUNT(*) FROM about_publish_history) > 0, 'Published', 'Draft'),
+            (SELECT MAX(created_at) FROM about_publish_history)
+          UNION ALL
+          SELECT 3, 'Exhibitions',
+            IF((SELECT COUNT(*) FROM events WHERE status='PUBLISHED') > 0, 'Published', 'Draft'),
+            (SELECT MAX(updated_at) FROM events)
+          UNION ALL
+          SELECT 4, 'Gallery',
+            IF((SELECT COUNT(*) FROM artworks) > 0, 'Published', 'Draft'),
+            (SELECT MAX(created_at) FROM artworks)
+          UNION ALL
+          SELECT 5, 'Contact Us',
+            IF((SELECT COUNT(*) FROM site_content WHERE content_key LIKE 'contact%' AND TRIM(content_value) <> '') > 0, 'Published', 'Draft'),
+            (SELECT MAX(updated_at) FROM site_content WHERE content_key LIKE 'contact%')
+        ) page ORDER BY page.sortOrder`),
       ])
       const rows = metricsResult[0][0] ?? {}
       const posts = postsResult[0]
@@ -430,15 +454,16 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
       const artworks = artworksResult[0]
       const partners = partnersResult[0]
       const altText = altTextResult[0][0] ?? {}
+      const pages = pagesResult[0]
       return res.json({
         role,
         metrics: [
-          metric('Managed pages', 5, 'Home, About, Exhibitions, Gallery and Contact'),
-          metric('Banners / sliders', count(rows.heroSlides), `${count(rows.homepageMedia)} homepage media slots`, 'blue'),
-          metric('Gallery photos', count(rows.artworks), 'Public artwork catalogue', 'purple'),
-          metric('Published blogs', count(rows.blogPosts), 'Stories on the website', 'green'),
-          metric('Artist profiles', count(rows.artists), 'Public artist directory', 'blue'),
-          metric('Partners & mentors', count(rows.partnersAndMentors), `${count(rows.pendingBlogs)} blogs awaiting review`, 'orange'),
+          metric('Total Pages', pages.length, `${pages.filter((page: any) => page.status === 'Published').length} currently published`),
+          metric('Banners / Sliders', count(rows.homepageMedia), `${count(rows.heroSlides)} hero slides`, 'blue'),
+          metric('Gallery Photos', count(rows.artworks), 'Public artwork catalogue', 'purple'),
+          metric('Approved Blogs', count(rows.blogPosts), `${count(rows.pendingBlogs)} awaiting review`, 'green'),
+          metric('Artist Profiles (Public)', count(rows.artists), 'Public artist directory', 'blue'),
+          metric('Partners & Mentors', count(rows.partnersAndMentors), 'Active public collaborators', 'orange'),
         ],
         sections: [
           { title: 'Recent blog posts', items: posts },
@@ -446,6 +471,7 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
         ],
         contentOverview: {
           media,
+          pages,
           artists: artists.map((item: any) => ({
             id: item.id, title: item.title, detail: item.detail,
             status: 'Public', createdAt: item.createdAt,
@@ -461,45 +487,89 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
     }
 
     if (role === 'REGISTRATION_MANAGER') {
-      const [metricsResult, eventsResult, registrationsResult] = await Promise.all([
-        pool.query<any[]>(`SELECT
-          (SELECT COUNT(*) FROM event_registrations WHERE status='REGISTERED') registrations,
-          (SELECT COUNT(*) FROM check_ins) checkedIn,
-          (SELECT COUNT(*) FROM qr_passes WHERE revoked_at IS NULL) activePasses,
-          (SELECT COUNT(*) FROM event_registrations r LEFT JOIN check_ins c ON c.pass_id=(SELECT q.id FROM qr_passes q WHERE q.registration_id=r.id) WHERE r.status='REGISTERED' AND c.id IS NULL) waiting`,
-        ),
-        pool.query<any[]>(`SELECT e.title, CONCAT(e.city, ' · ', DATE_FORMAT(e.starts_at,'%e %b %Y')) detail,
-          e.status, e.starts_at createdAt,
-          (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id=e.id AND r.status='REGISTERED') registrations
-          FROM events e WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at >= CURRENT_DATE()
-          ORDER BY e.starts_at LIMIT 5`),
-        pool.query<any[]>(`SELECT v.full_name title, CONCAT(e.title, ' · ', DATE_FORMAT(r.created_at,'%e %b %Y')) detail,
-          IF(c.id IS NULL, 'Registered', 'Checked in') status, r.created_at createdAt
+      const [eventsResult, registrationsResult, checkInsResult, metricResult, dailyResult] = await Promise.all([
+        pool.query<any[]>(`SELECT e.id,e.title,e.city,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+          IF(NOW() BETWEEN e.starts_at AND e.ends_at,'Live',IF(e.starts_at>NOW(),'Upcoming','Recently ended')) status,
+          COUNT(DISTINCT CASE WHEN r.status='REGISTERED' THEN r.id END) registrations,
+          COUNT(DISTINCT CASE WHEN r.status='REGISTERED' AND c.id IS NOT NULL THEN r.id END) checkedIn
+          FROM events e
+          LEFT JOIN event_registrations r ON r.event_id=e.id
+          LEFT JOIN qr_passes q ON q.registration_id=r.id AND q.revoked_at IS NULL
+          LEFT JOIN check_ins c ON c.pass_id=q.id
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+          GROUP BY e.id ORDER BY e.starts_at LIMIT 20`),
+        pool.query<any[]>(`SELECT r.id registrationId,v.full_name title,v.email,
+          e.id eventId,e.title eventTitle,IF(c.id IS NULL,'Registered','Checked in') status,
+          r.created_at createdAt,c.checked_in_at checkedInAt
           FROM event_registrations r JOIN visitor_profiles v ON v.id=r.visitor_id
-          JOIN events e ON e.id=r.event_id LEFT JOIN qr_passes q ON q.registration_id=r.id
-          LEFT JOIN check_ins c ON c.pass_id=q.id WHERE r.status='REGISTERED'
-          ORDER BY r.created_at DESC LIMIT 6`),
+          JOIN events e ON e.id=r.event_id
+          LEFT JOIN qr_passes q ON q.registration_id=r.id AND q.revoked_at IS NULL
+          LEFT JOIN check_ins c ON c.pass_id=q.id
+          WHERE r.status='REGISTERED' AND e.status IN ('APPROVED','PUBLISHED')
+            AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+          ORDER BY r.created_at DESC LIMIT 8`),
+        pool.query<any[]>(`SELECT c.id,v.full_name title,v.email,e.id eventId,e.title eventTitle,
+          'Checked in' status,c.checked_in_at createdAt
+          FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
+          JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
+          JOIN visitor_profiles v ON v.id=r.visitor_id JOIN events e ON e.id=r.event_id
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+          ORDER BY c.checked_in_at DESC LIMIT 8`),
+        pool.query<any[]>(`SELECT
+          (SELECT COUNT(*) FROM event_registrations r JOIN events e ON e.id=r.event_id
+            WHERE r.status='REGISTERED' AND e.status IN ('APPROVED','PUBLISHED')
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) registrations,
+          (SELECT COUNT(*) FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
+            JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
+            JOIN events e ON e.id=r.event_id WHERE e.status IN ('APPROVED','PUBLISHED')
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) checkedIn,
+          (SELECT COUNT(*) FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
+            JOIN events e ON e.id=r.event_id WHERE q.revoked_at IS NULL
+              AND e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) activePasses,
+          (SELECT COUNT(*) FROM events WHERE status IN ('APPROVED','PUBLISHED')
+            AND ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) activeEvents,
+          (SELECT COUNT(*) FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
+            JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
+            JOIN events e ON e.id=r.event_id WHERE e.status IN ('APPROVED','PUBLISHED')
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) AND c.checked_in_at>=CURRENT_DATE()) todayEntries`),
+        pool.query<any[]>(`SELECT DATE_FORMAT(c.checked_in_at,'%Y-%m-%d') day,COUNT(*) total
+          FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
+          JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
+          JOIN events e ON e.id=r.event_id
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND c.checked_in_at>=DATE_SUB(CURRENT_DATE(),INTERVAL 6 DAY)
+          GROUP BY DATE_FORMAT(c.checked_in_at,'%Y-%m-%d') ORDER BY day`),
       ])
-      const rows = metricsResult[0][0] ?? {}
+      const rows = metricResult[0][0] ?? {}
       const events = eventsResult[0]
       const registrations = registrationsResult[0]
+      const checkIns = checkInsResult[0]
+      const dailyCheckIns = dailyResult[0]
       return res.json({
         role,
         metrics: [
-          metric('Visitor registrations', count(rows.registrations), 'Across published exhibitions', 'orange'),
-          metric('Checked in', count(rows.checkedIn), 'Successful event entries', 'green'),
-          metric('Yet to check in', count(rows.waiting), 'Registered attendees', 'blue'),
-          metric('Active QR passes', count(rows.activePasses), 'Not revoked', 'purple'),
+          metric('Total Registrations', count(rows.registrations), 'Recent published exhibitions', 'orange'),
+          metric('Checked In', count(rows.checkedIn), 'Valid event entries', 'green'),
+          metric('Yet to Check In', Math.max(0, count(rows.registrations) - count(rows.checkedIn)), 'Registered attendees', 'blue'),
+          metric('Active QR Passes', count(rows.activePasses), 'Not revoked', 'purple'),
+          metric('Active Exhibitions', count(rows.activeEvents), 'Open or within the last 30 days', 'orange'),
+          metric('Today’s Entries', count(rows.todayEntries), 'Successful scans today', 'green'),
         ],
         sections: [
-          { title: 'Upcoming event desk', items: events },
-          { title: 'Recent registrations', items: registrations },
+          { title: 'Recent registrations', items: registrations.map((item: any) => ({
+            id: item.registrationId, title: item.title, detail: `${item.eventTitle} · ${item.email}`,
+            status: item.status, createdAt: item.createdAt,
+          })) },
+          { title: 'Recent check-ins', items: checkIns.map((item: any) => ({
+            id: item.id, title: item.title, detail: `${item.eventTitle} · ${item.email}`,
+            status: item.status, createdAt: item.createdAt,
+          })) },
         ],
+        eventStaffOverview: { events, registrations, checkIns, dailyCheckIns },
       })
     }
 
     if (role === 'ARTIST_EXHIBITOR') {
-      const [metricsResult, applicationsResult, bookingsResult] = await Promise.all([
+      const [metricsResult, applicationsResult, bookingsResult, upcomingEventsResult] = await Promise.all([
         pool.query<any[]>(`SELECT
           (SELECT COUNT(*) FROM exhibition_applications WHERE user_id=?) applications,
           (SELECT COUNT(*) FROM exhibition_applications WHERE user_id=? AND status IN ('SUBMITTED','UNDER_REVIEW')) underReview,
@@ -513,6 +583,10 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
         pool.query<any[]>(`SELECT b.booking_ref reference, e.title, CONCAT(s.code, ' · ₹', FORMAT(b.total_amount,2)) detail,
           b.status, b.created_at createdAt FROM stall_bookings b JOIN events e ON e.id=b.event_id
           JOIN stalls s ON s.id=b.stall_id WHERE b.user_id=? ORDER BY b.created_at DESC LIMIT 5`, [req.user!.id]),
+        pool.query<any[]>(`SELECT e.id,e.title,e.city,e.venue,e.description,e.starts_at startsAt,e.ends_at endsAt,
+            (SELECT em.id FROM event_media em WHERE em.event_id=e.id AND em.media_type='IMAGE' AND em.data IS NOT NULL ORDER BY em.sort_order,em.id LIMIT 1) mediaId
+          FROM events e WHERE e.status IN ('APPROVED','PUBLISHED') AND e.starts_at >= CURRENT_DATE()
+          ORDER BY e.starts_at LIMIT 4`),
       ])
       const rows = metricsResult[0][0] ?? {}
       const applications = applicationsResult[0]
@@ -521,6 +595,7 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
         role,
         metrics: [
           metric('Applications', count(rows.applications), `${count(rows.underReview)} under review`, 'orange'),
+          metric('Under review', count(rows.underReview), 'Applications awaiting a decision', 'purple'),
           metric('Stall bookings', count(rows.stallBookings), 'Your exhibition spaces', 'blue'),
           metric('Confirmed bookings', count(rows.confirmedBookings), 'Successfully paid', 'green'),
           metric('Total paid', Number(rows.paid ?? 0), 'Confirmed stall bookings · INR', 'purple'),
@@ -529,41 +604,101 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
           { title: 'My exhibition applications', items: applications },
           { title: 'My stall bookings', items: bookings },
         ],
+        artistOverview: {
+          upcomingEvents: upcomingEventsResult[0].map((event: any) => ({
+            ...event,
+            mediaUrl: event.mediaId ? `/api/events/${event.id}/media/${event.mediaId}` : null,
+          })),
+        },
       })
     }
 
-    const [userResult] = await pool.query<any[]>('SELECT email FROM users WHERE id=?', [req.user!.id])
-    const userRows = userResult
-    const email = String(userRows[0]?.email ?? '')
+    const [userResult] = await pool.query<any[]>('SELECT email,full_name fullName FROM users WHERE id=?', [req.user!.id])
+    const account = userResult[0]
+    const email = String(account?.email ?? '')
     const [profileResult] = await pool.query<any[]>('SELECT id FROM visitor_profiles WHERE email=?', [email])
-    const profiles = profileResult
-    const profileId = profiles[0]?.id as string | undefined
-    const [registrations, upcoming] = await Promise.all([
+    const profileId = profileResult[0]?.id as string | undefined
+    const [registrations, upcoming, postsResult, artistsResult, storyCountResult, artistCountResult] = await Promise.all([
       profileId
-        ? pool.query<any[]>(`SELECT e.title, CONCAT(e.city, ' · ', DATE_FORMAT(e.starts_at,'%e %b %Y')) detail,
-            IF(q.revoked_at IS NULL AND q.id IS NOT NULL, 'Pass active', 'Registered') status,
-            r.created_at createdAt, q.id passId
+        ? pool.query<any[]>(`SELECT r.id registrationId,e.id eventId,e.title,e.city,e.venue,
+            e.starts_at startsAt,e.ends_at endsAt,e.description,r.created_at createdAt,
+            q.id passId,q.revoked_at revokedAt,c.checked_in_at checkedInAt,
+            (SELECT em.id FROM event_media em WHERE em.event_id=e.id AND em.media_type='IMAGE' AND em.data IS NOT NULL ORDER BY em.sort_order,em.id LIMIT 1) mediaId
             FROM event_registrations r JOIN events e ON e.id=r.event_id
             LEFT JOIN qr_passes q ON q.registration_id=r.id
-            WHERE r.visitor_id=? AND r.status='REGISTERED' ORDER BY e.starts_at DESC LIMIT 10`, [profileId])
+            LEFT JOIN check_ins c ON c.pass_id=q.id
+            WHERE r.visitor_id=? AND r.status='REGISTERED'
+            ORDER BY e.starts_at DESC LIMIT 10`, [profileId])
         : Promise.resolve([[]]),
-      pool.query<any[]>(`SELECT title, CONCAT(city, ' · ', DATE_FORMAT(starts_at,'%e %b %Y')) detail,
-          status, starts_at createdAt FROM events
+      pool.query<any[]>(`SELECT e.id,e.title,e.city,e.venue,e.description,e.starts_at startsAt,e.ends_at endsAt,
+          (SELECT em.id FROM event_media em WHERE em.event_id=e.id AND em.media_type='IMAGE' AND em.data IS NOT NULL ORDER BY em.sort_order,em.id LIMIT 1) mediaId
+          FROM events e
           WHERE status IN ('APPROVED','PUBLISHED') AND ends_at >= CURRENT_DATE()
           ORDER BY starts_at LIMIT 5`),
+      pool.query<any[]>(`SELECT id,title,excerpt,author,published_at publishedAt,
+          cover_mime IS NOT NULL hasCover FROM blog_posts WHERE status='APPROVED'
+          ORDER BY published_at DESC,id DESC LIMIT 3`),
+      pool.query<any[]>(`SELECT id,name,city,photo_mime IS NOT NULL hasPhoto
+          FROM artists ORDER BY created_at DESC,id DESC LIMIT 4`),
+      pool.query<any[]>(`SELECT COUNT(*) total FROM blog_posts WHERE status='APPROVED'`),
+      pool.query<any[]>(`SELECT COUNT(*) total FROM artists`),
     ])
-    const passes = (registrations[0] as any[]).filter((item) => item.passId && item.status === 'Pass active').length
+    const qrPassSecret = process.env.JWT_SECRET
+    if (!qrPassSecret || qrPassSecret.length < 32) {
+      throw new Error('JWT_SECRET must be configured with at least 32 characters')
+    }
+    const visitorRegistrations = registrations[0].map((item: any) => ({
+      ...item,
+      status: item.revokedAt ? 'Revoked' : item.checkedInAt ? 'Checked in' : item.passId ? 'Pass active' : 'Registered',
+      mediaUrl: item.mediaId ? `/api/events/${item.eventId}/media/${item.mediaId}` : null,
+      qrData: item.passId && !item.revokedAt && !item.checkedInAt
+        ? passTokenForId(item.passId, qrPassSecret)
+        : null,
+    }))
+    const visitorEvents = upcoming[0].map((item: any) => ({
+      ...item,
+      mediaUrl: item.mediaId ? `/api/events/${item.id}/media/${item.mediaId}` : null,
+    }))
+    const activePasses = visitorRegistrations.filter((item: any) => item.status === 'Pass active')
     return res.json({
       role,
       metrics: [
-        metric('My registrations', registrations[0].length, 'Your exhibition history', 'orange'),
-        metric('Active QR passes', passes, 'Ready for event entry', 'green'),
-        metric('Upcoming exhibitions', upcoming[0].length, 'Explore what is coming', 'blue'),
+        metric('Total Registrations', visitorRegistrations.length, 'Your exhibition history', 'orange'),
+        metric('Active QR Passes', activePasses.length, 'Ready for event entry', 'green'),
+        metric('Upcoming Exhibitions', visitorEvents.length, 'Explore what is coming', 'blue'),
+        metric('Favourite Events', '—', 'Event favourites are not saved yet', 'purple'),
+        metric('Days to Next Event', visitorEvents.length
+          ? Math.max(0, Math.ceil((new Date(visitorEvents[0].startsAt).getTime() - Date.now()) / 86400000))
+          : '—', visitorEvents.length ? visitorEvents[0].title : 'No upcoming exhibition', 'orange'),
       ],
       sections: [
-        { title: 'My event registrations', items: (registrations[0] as any[]).map(({ passId: _passId, ...item }) => item) },
-        { title: 'Upcoming exhibitions', items: upcoming[0] },
+        { title: 'My event registrations', items: visitorRegistrations.map((item: any) => ({
+          id: item.registrationId, title: item.title,
+          detail: `${item.city || item.venue} · ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(item.startsAt))}`,
+          status: item.status, createdAt: item.createdAt, mediaUrl: item.mediaUrl,
+        })) },
+        { title: 'Upcoming exhibitions', items: visitorEvents.map((item: any) => ({
+          id: item.id, title: item.title, detail: `${item.city || item.venue} · ${item.startsAt}`,
+          status: 'Upcoming', createdAt: item.startsAt, mediaUrl: item.mediaUrl,
+        })) },
       ],
+      visitorOverview: {
+        fullName: account?.fullName ?? '',
+        registrations: visitorRegistrations,
+        upcoming: visitorEvents,
+        blogs: postsResult[0].map((post: any) => ({
+          ...post,
+          mediaUrl: post.hasCover ? `/api/content/blog/${post.id}/cover` : null,
+        })),
+        artists: artistsResult[0].map((artist: any) => ({
+          id: artist.id, title: artist.name, detail: artist.city,
+          mediaUrl: artist.hasPhoto ? `/api/content/artists/${artist.id}/photo` : null,
+        })),
+        totals: {
+          stories: count(storyCountResult[0][0]?.total),
+          artists: count(artistCountResult[0][0]?.total),
+        },
+      },
     })
   } catch (error) {
     next(error)

@@ -136,7 +136,7 @@ export function DashboardCheckIn() {
         <span className="role-access-secure"><ShieldCheck size={14} /> Event check-in</span>
       </header>
       <div className="role-access-content check-in-content">
-        <div className="role-access-title"><span className="role-access-icon"><ScanLine size={22} /></span><div><p className="role-eyebrow">Registration desk</p><h1>Scan visitor pass</h1><p>Scan the visitor’s QR code or enter the pass code to validate and record event entry.</p></div></div>
+        <div className="role-access-title"><span className="role-access-icon"><ScanLine size={22} /></span><div><p className="role-eyebrow">Registration desk</p><h1>Scan visitor pass</h1>        <p>Scan the visitor’s QR code with this website or enter its pass link/code to validate and record event entry.</p></div></div>
         {error && <p className="role-error" role="alert"><CircleAlert size={15} /> {error}</p>}
         {result && <section className="check-in-success" role="status"><CheckCircle2 size={26} /><div><p className="role-eyebrow">Entry confirmed</p><h2>{result.attendee.name}</h2><p>{result.attendee.email}</p><strong>{result.attendee.event}</strong></div></section>}
         <section className="check-in-panel">
@@ -147,7 +147,7 @@ export function DashboardCheckIn() {
             <button className="role-save-button" type="button" onClick={() => { setError(''); setResult(null); setScannerMessage(''); setScanActive((active) => !active) }} disabled={busy}>
               {scanActive ? <><Square size={15} /> Stop camera</> : <><Camera size={15} /> Open camera</>}
             </button>
-            <span>or enter pass code</span>
+            <span>or paste QR link / pass code</span>
           </div>
           <form className="check-in-form" onSubmit={(event) => { event.preventDefault(); void checkIn(token) }}>
             <label htmlFor="pass-token">Visitor pass code</label>

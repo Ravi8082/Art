@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { z } from 'zod'
 
 const passIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -25,4 +26,15 @@ export function passIdFromToken(token: string, secret: string) {
 
 export function hashPassToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+export function tokenFromScannedValue(value: string) {
+  const parsedUrl = z.string().url().safeParse(value)
+  if (!parsedUrl.success) return value
+  const scannedUrl = new URL(parsedUrl.data)
+  const passPath = '/visitor/pass/'
+  if ((scannedUrl.protocol === 'http:' || scannedUrl.protocol === 'https:') && scannedUrl.pathname.startsWith(passPath)) {
+    return scannedUrl.pathname.slice(passPath.length)
+  }
+  return value
 }

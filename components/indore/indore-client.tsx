@@ -2,8 +2,12 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { ArrowRight, CalendarDays, Clock, MapPin, Users } from 'lucide-react'
+import QRCode from 'qrcode'
+import { ArrowRight, CalendarDays, CheckCircle2, Clock, MapPin, QrCode, Users } from 'lucide-react'
 import { indoreEvent, indoreForm, indoreInfo } from '@/lib/demo-indore'
+import { visitorPassUrl } from '@/lib/visitor-pass-url'
+
+const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 const pad = (n: number) => String(Math.max(0, n)).padStart(2, '0')
 
@@ -46,27 +50,128 @@ export function IndoreHero() {
 
 export function PassForm() {
   const f = indoreForm
-  const [msg, setMsg] = useState('')
-  function submit(ev: FormEvent<HTMLFormElement>) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [otpEmail, setOtpEmail] = useState('')
+  const [pass, setPass] = useState<{ passId: string; qrData: string; eventTitle: string; emailSent: boolean; message: string } | null>(null)
+  const [qrImage, setQrImage] = useState('')
+
+  useEffect(() => {
+    if (!pass) return
+    let active = true
+    const url = visitorPassUrl(pass.qrData, window.location.origin)
+    void QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, width: 220 })
+      .then((image) => { if (active) setQrImage(image) })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : 'Could not generate the pass QR code.')
+      })
+    return () => { active = false }
+  }, [pass])
+
+  async function submit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault()
-    setMsg('Demo only: the form is valid, but registration and email OTP are not connected yet, so nothing was saved or sent.')
+    setError('')
+    setBusy(true)
+    const form = new FormData(ev.currentTarget)
+    try {
+      const response = await fetch(`${apiBase}/api/passes/public/indore/register`, {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          fullName: String(form.get('name') ?? '').trim(),
+          email: String(form.get('email') ?? '').trim().toLowerCase(),
+          phone: String(form.get('phone') ?? '').trim(),
+          city: String(form.get('city') ?? ''),
+          attendingAs: String(form.get('as') ?? ''),
+          marketingConsent: form.get('consent') === 'on',
+        }),
+      })
+      const data = await response.json() as { error?: string; email?: string; message?: string }
+      if (!response.ok) throw new Error(data.error || `Could not request a pass (${response.status}).`)
+      if (!data.email) throw new Error('The verification request returned no email address.')
+      setOtpEmail(data.email)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not request your entry pass.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function verifyCode(ev: FormEvent<HTMLFormElement>) {
+    ev.preventDefault()
+    setError('')
+    setBusy(true)
+    const form = new FormData(ev.currentTarget)
+    try {
+      const response = await fetch(`${apiBase}/api/passes/public/indore/verify`, {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail, code: String(form.get('code') ?? '') }),
+      })
+      const data = await response.json() as {
+        error?: string
+        message?: string
+        pass?: { passId: string; qrData: string; eventTitle: string }
+        emailSent?: boolean
+      }
+      if (!response.ok) throw new Error(data.error || `Could not verify your email (${response.status}).`)
+      if (!data.pass?.passId || !data.pass.qrData || !data.pass.eventTitle || !data.message) {
+        throw new Error('The server response did not include a valid entry pass.')
+      }
+      setPass({
+        ...data.pass,
+        emailSent: data.emailSent === true,
+        message: data.message,
+      })
+      setOtpEmail('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not verify your email.')
+    } finally {
+      setBusy(false)
+    }
   }
   return (
-    <form className="in-form" id="register" onSubmit={submit}>
+    <section className="in-form" id="register">
       <h2>{f.title} <em>{f.accent}</em></h2>
-      <p>{f.subtitle}</p>
-      <div className="in-grid">
-        <label>Full Name *<input required name="name" placeholder="Enter your full name" autoComplete="name" /></label>
-        <label>Email Address *<input required type="email" name="email" placeholder="Enter your email" autoComplete="email" /></label>
-        <label>Mobile Number *<input required type="tel" name="phone" placeholder="Enter your mobile number" autoComplete="tel" pattern="[0-9+ ]{10,14}" /></label>
-        <label>City *<select required name="city" defaultValue=""><option value="" disabled>Select city</option>{f.cities.map((c) => <option key={c}>{c}</option>)}</select></label>
-        <label className="in-wide">Are you attending as? *<select required name="as" defaultValue=""><option value="" disabled>Select option</option>{f.attendingAs.map((c) => <option key={c}>{c}</option>)}</select></label>
-      </div>
-      <label className="in-check"><input type="checkbox" name="consent" defaultChecked /> <span>{f.consent}</span></label>
-      <button className="in-submit" type="submit">{f.button} <ArrowRight size={15} /></button>
-      <small>{f.note}</small>
-      {msg && <p className="in-msg" role="status">{msg}</p>}
-    </form>
+      {pass ? (
+        <div className="in-pass-confirmation" role="status">
+          <CheckCircle2 size={30} />
+          <h3>Your free entry pass is ready</h3>
+          <p>{pass.eventTitle}</p>
+          <div className="in-pass-qr">{qrImage ? <img src={qrImage} alt={`Entry QR pass for ${pass.eventTitle}`} /> : <span>Preparing your QR code…</span>}</div>
+          {error && <p className="in-msg" role="alert">{error}</p>}
+          <p>{pass.message}</p>
+          <div className="in-pass-actions">
+            {qrImage && <a className="in-submit" href={qrImage} download={`haat-of-art-pass-${pass.passId}.png`}><QrCode size={15} /> Download QR pass</a>}
+            <Link href={`/visitor/pass/${encodeURIComponent(pass.qrData)}`} target="_blank">View pass details</Link>
+            <Link href="/visitor/register">Create account to view passes in dashboard</Link>
+          </div>
+        </div>
+      ) : otpEmail ? (
+        <form onSubmit={verifyCode}>
+          <p>A 6-digit verification code was sent to <strong>{otpEmail}</strong>. Verify your email to generate your entry pass.</p>
+          <label>Verification code *<input required name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} /></label>
+          {error && <p className="in-msg" role="alert">{error}</p>}
+          <button className="in-submit" type="submit" disabled={busy}>{busy ? 'Verifying…' : 'Verify & get pass'} <ArrowRight size={15} /></button>
+          <button className="in-pass-back" type="button" onClick={() => { setOtpEmail(''); setError('') }} disabled={busy}>Change registration details</button>
+        </form>
+      ) : (
+        <form onSubmit={submit}>
+          <p>{f.subtitle}</p>
+          <div className="in-grid">
+            <label>Full Name *<input required name="name" minLength={2} maxLength={160} placeholder="Enter your full name" autoComplete="name" /></label>
+            <label>Email Address *<input required type="email" name="email" maxLength={255} placeholder="Enter your email" autoComplete="email" /></label>
+            <label>Mobile Number *<input required type="tel" name="phone" placeholder="Enter your mobile number" autoComplete="tel" pattern="[0-9+ ]{10,14}" /></label>
+            <label>City *<select required name="city" defaultValue=""><option value="" disabled>Select city</option>{f.cities.map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label className="in-wide">Are you attending as? *<select required name="as" defaultValue=""><option value="" disabled>Select option</option>{f.attendingAs.map((c) => <option key={c}>{c}</option>)}</select></label>
+          </div>
+          <label className="in-check"><input type="checkbox" name="consent" defaultChecked /> <span>{f.consent}</span></label>
+          {error && <p className="in-msg" role="alert">{error}</p>}
+          <button className="in-submit" type="submit" disabled={busy}>{busy ? 'Sending verification code…' : f.button} <ArrowRight size={15} /></button>
+          <small>{f.note}</small>
+        </form>
+      )}
+    </section>
   )
 }
 

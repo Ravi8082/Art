@@ -12,7 +12,8 @@ const slugify = (value: string) => `${value.toLowerCase().replace(/[^a-z0-9]+/g,
 eventsRouter.get('/', async (_req, res, next) => {
   try {
     const [events] = await pool.query<any[]>(`
-      SELECT e.id, e.title, e.description, e.starts_at startsAt, e.ends_at endsAt, e.venue, e.status
+      SELECT e.id, e.slug, e.title, e.description, e.starts_at startsAt, e.ends_at endsAt,
+        e.venue, e.city, e.status
       FROM events e
       WHERE e.status IN ('PUBLISHED','APPROVED')
       ORDER BY e.starts_at

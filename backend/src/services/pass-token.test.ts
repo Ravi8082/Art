@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { hashPassToken, passIdFromToken, passTokenForId } from './pass-token.js'
+import { hashPassToken, passIdFromToken, passTokenForId, tokenFromScannedValue } from './pass-token.js'
 
 const passId = 'a71d5f5a-5a24-4d74-82be-1bfa14c382f7'
 const secret = 'test-secret-with-at-least-32-characters'
@@ -18,4 +18,13 @@ test('visitor pass tokens reject tampering, a different secret, and malformed id
   assert.equal(passIdFromToken(`${passId}.invalid`, secret), null)
   assert.equal(passIdFromToken(`not-a-uuid.${token.split('.')[1]}`, secret), null)
   assert.equal(passIdFromToken(`${token}.extra`, secret), null)
+})
+
+test('website scanner accepts public pass URLs as well as legacy raw tokens', () => {
+  const token = passTokenForId(passId, secret)
+  assert.equal(tokenFromScannedValue(token), token)
+  assert.equal(tokenFromScannedValue(`https://haat.example/visitor/pass/${token}`), token)
+  assert.equal(tokenFromScannedValue(`https://haat.example/visitor/pass/${token}?source=camera`), token)
+  assert.equal(tokenFromScannedValue('not-a-url'), 'not-a-url')
+  assert.equal(tokenFromScannedValue('https://haat.example/unrelated/path'), 'https://haat.example/unrelated/path')
 })

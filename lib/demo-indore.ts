@@ -1,8 +1,7 @@
-// DEMO CONTENT ONLY. Event name, dates, venue, timings and photos are placeholders until the
-// Admin Panel is connected. The shape below is what the backend should later return.
-// Email OTP, registration, reminders and subscriptions are NOT implemented yet.
+// The banner and gallery remain demo content until they are connected to managed event media.
+// Free-pass registration uses the published Indore exhibition and verifies the visitor by email OTP.
 
-export const INDORE_DEMO_NOTE = 'Demo content — dates, venue and photos are placeholders. Registration, OTP and email updates are not connected yet'
+export const INDORE_DEMO_NOTE = 'Exhibition photos and some page details are demo content. Free entry pass registration is active and requires email verification; event updates and reminders are not available yet.'
 
 export const indoreEvent = {
   eyebrow: 'The Haat of Art',
@@ -35,7 +34,7 @@ export const indoreForm = {
   attendingAs: ['Visitor', 'Art Lover / Collector', 'Artist', 'Student', 'Interior Designer / Architect'],
   consent: 'I would like to receive updates about upcoming exhibitions, events and art news from The Haat of Art.',
   button: 'Get Free Entry Pass',
-  note: 'We will send a verification link/OTP to your email to confirm your registration.',
+  note: 'We will send a 6-digit verification code to your email. Your free entry QR pass is created after you verify it.',
 }
 
 export const indoreWhy = [

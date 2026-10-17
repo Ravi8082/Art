@@ -4,11 +4,13 @@ export const apiBaseUrl = (process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLI
 
 export type PublicEvent = {
   id: string
+  slug: string
   title: string
   description: string
   startsAt: string
   endsAt: string
   venue: string
+  city: string
   media: { id: string; altText: string; mediaType: 'IMAGE' | 'VIDEO'; url: string }[]
 }
 
