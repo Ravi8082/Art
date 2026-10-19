@@ -166,6 +166,7 @@ bookingsRouter.get('/media/:assetId', ...artist, async (req: AuthRequest, res, n
       return res.status(403).json({ error: 'Insufficient permissions' })
     }
     res.set('Content-Type', asset.mime_type)
+    res.set('X-Content-Type-Options', 'nosniff')
     res.set('Cache-Control', 'private, max-age=300')
     res.send(asset.data)
   } catch (error) { next(error) }
@@ -372,7 +373,9 @@ bookingsRouter.post('/bookings/:id/pay', ...artist, async (req: AuthRequest, res
       paymentProofAssetId: z.string().uuid().nullable().default(null),
     }).parse(req.body)
 
-    const [existing] = await pool.query<any[]>('SELECT * FROM payments WHERE idempotency_key = ?', [idempotencyKey])
+    const [existing] = await pool.query<any[]>(
+      'SELECT p.* FROM payments p JOIN stall_bookings b ON b.id = p.booking_id WHERE p.idempotency_key = ? AND b.id = ? AND b.user_id = ?',
+      [idempotencyKey, req.params.id, req.user!.id])
     if (existing[0]) {
       const payment = existing[0]
       return res.json({

@@ -261,6 +261,8 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
   const [menuOpen, setMenuOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [mfaToken, setMfaToken] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
   const allowedRoles = useMemo(() => {
@@ -335,10 +337,26 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
     setBusy(true)
     setError('')
     try {
-      await getJson('/api/auth/login', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+      if (mfaToken) {
+        await getJson('/api/auth/login/verify', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ mfaToken, code: mfaCode.trim() }),
+        })
+        setMfaToken(''); setMfaCode(''); setPassword('')
+        await loadCurrentUser()
+        return
+      }
+      const response = await fetch(`${apiBase}/api/auth/login`, {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       })
+      const data = await response.json().catch(() => ({})) as { error?: string; mfaRequired?: boolean; mfaToken?: string }
+      if (data.mfaRequired && data.mfaToken) {
+        setMfaToken(data.mfaToken)
+        setError('')
+        return
+      }
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`)
       setPassword('')
       await loadCurrentUser()
     } catch (cause) {
@@ -376,10 +394,20 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
           <h1>Sign in to your dashboard</h1>
           <p className="role-login-copy">Your account role determines which Haat of Art workspace you can access.</p>
           <form onSubmit={signIn}>
-            <label>Email address<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label>Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            {mfaToken ? (
+              <>
+                <p className="role-login-copy">Humne aapke email par 6-digit code bheja hai. Wo yahan daalein.</p>
+                <label>Verification code<input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))} /></label>
+              </>
+            ) : (
+              <>
+                <label>Email address<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+                <label>Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+              </>
+            )}
             {error && <p className="role-error" role="alert">{error}</p>}
-            <button className="role-primary-button" disabled={busy}>{busy ? 'Signing in…' : 'Sign in securely'} <ArrowRight size={16} /></button>
+            <button className="role-primary-button" disabled={busy}>{busy ? 'Signing in…' : mfaToken ? 'Verify and sign in' : 'Sign in securely'} <ArrowRight size={16} /></button>
+            {mfaToken && <button type="button" className="role-back-link" onClick={() => { setMfaToken(''); setMfaCode(''); setError('') }}>Use a different account</button>}
           </form>
           <p className="visitor-login-prompt"><Link href="/password-reset">Forgot your password?</Link></p>
           <p className="visitor-login-prompt">New visitor? <Link href="/visitor/register">Create an account</Link></p>

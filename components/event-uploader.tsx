@@ -45,6 +45,13 @@ export function EventUploader() {
     setCustomCity('')
   }
   const [busy, setBusy] = useState(false)
+  const [startValue, setStartValue] = useState('')
+  const [endValue, setEndValue] = useState('')
+  function changeStart(value: string) {
+    setStartValue(value)
+    // Keep the end date from sitting before the new start.
+    if (value && (!endValue || endValue <= value)) setEndValue(value.slice(0, 11) + '18:00')
+  }
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
@@ -169,6 +176,7 @@ export function EventUploader() {
 
       setMessage(`Event ${eventId}, ${totalSlots} stall slot(s) aur ${files.length} media file(s) save hue. Approval ke baad homepage par dikh sakte hain.`)
       formElement.reset()
+      setStartValue(''); setEndValue('')
       setFiles([])
       setStates([])
       setCities([])
@@ -238,8 +246,8 @@ export function EventUploader() {
                   {cities.length > 0 && <div className="event-chips">{cities.map((city) => <button type="button" key={city} onClick={() => setCities((current) => current.filter((item) => item !== city))} aria-label={`Remove ${city}`}>{city} ×</button>)}</div>}
                 </div>
                 <div className="event-dates dashboard-event-dates">
-                  <label>Starts at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="startsAt" type="datetime-local" required /></span></label>
-                  <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required /></span></label>
+                  <label>Starts at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="startsAt" type="datetime-local" required value={startValue} onChange={(e) => changeStart(e.target.value)} /></span></label>
+                  <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required value={endValue} min={startValue || undefined} onChange={(e) => setEndValue(e.target.value)} /></span>{startValue && endValue && endValue <= startValue && <small role="alert" style={{ color: '#b42318' }}>End date start ke baad honi chahiye.</small>}</label>
                 </div>
               </div>
             </section>

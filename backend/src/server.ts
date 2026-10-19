@@ -35,6 +35,14 @@ app.disable('x-powered-by')
 if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000', credentials: true }))
+// CSRF defence in depth on top of SameSite cookies: browsers always send Origin on cross-site writes, so reject any that is not our frontend.
+const allowedOrigin = (process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
+  const origin = req.get('origin')
+  if (origin && origin.replace(/\/$/, '') !== allowedOrigin) return res.status(403).json({ error: 'Cross-origin request blocked' })
+  next()
+})
 app.use(express.json({ limit: '1mb' }))
 app.use(cookieParser(process.env.COOKIE_SECRET ?? 'development-cookie-secret'))
 app.get('/health', async (_req, res) => {

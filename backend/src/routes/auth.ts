@@ -20,6 +20,13 @@ const issue = (id: string) => jwt.sign({ sub: id }, secret(), { expiresIn: '15m'
 const otpRequestLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
 const otpVerifyLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
 const visitorResumeLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
+// Brute-force guard: counted per client IP and email, failed and successful attempts alike.
+const loginLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}|${String(req.body?.email ?? '').toLowerCase().slice(0, 120)}`,
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+})
 const setSession = (res: Response, id: string) => {
   res.cookie('session', issue(id), { httpOnly: true, signed: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 15 * 60 * 1000 })
 }
@@ -47,7 +54,45 @@ authRouter.post('/register', otpRequestLimit, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-authRouter.post('/login', async (req, res, next) => { try { const input = z.object({ email: z.string().email(), password: z.string() }).parse(req.body); const [rows] = await pool.query<any[]>('SELECT id,password_hash,status,email_verified_at FROM users WHERE email=?', [input.email.toLowerCase()]); const user = rows[0]; if (!user || !(await bcrypt.compare(input.password, user.password_hash)) || user.status !== 'ACTIVE' || !user.email_verified_at) return res.status(401).json({ error: 'Invalid credentials or unverified account' }); setSession(res, user.id); res.json({ userId: user.id }) } catch (error) { next(error) } })
+const staffRoles = new Set(['SUPER_ADMIN', 'ADMIN', 'CONTENT_MANAGER', 'REGISTRATION_MANAGER'])
+// Staff accounts need a second factor (emailed one-time code). Set STAFF_MFA=off only as an emergency escape hatch.
+const staffMfaEnabled = () => process.env.STAFF_MFA !== 'off'
+const issueMfaToken = (id: string) => jwt.sign({ sub: id, purpose: 'mfa' }, secret(), { expiresIn: '5m' })
+
+authRouter.post('/login', loginLimit, async (req, res, next) => {
+  try {
+    const input = z.object({ email: z.string().email(), password: z.string() }).parse(req.body)
+    const [rows] = await pool.query<any[]>('SELECT id,email,password_hash,status,email_verified_at FROM users WHERE email=?', [input.email.toLowerCase()])
+    const user = rows[0]
+    if (!user || !(await bcrypt.compare(input.password, user.password_hash)) || user.status !== 'ACTIVE' || !user.email_verified_at) return res.status(401).json({ error: 'Invalid credentials or unverified account' })
+    if (staffMfaEnabled()) {
+      const [roleRows] = await pool.query<any[]>('SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=?', [user.id])
+      if (roleRows.some((role) => staffRoles.has(role.name))) {
+        // A code requested moments ago is still valid, so a cooldown error is not fatal.
+        await createOtp(user.id, 'LOGIN', user.email).catch((error: { status?: number }) => { if (error.status !== 429) throw error })
+        return res.status(403).json({ error: 'Staff sign-in needs a verification code. Please sign in from the dashboard login page (/login).', mfaRequired: true, mfaToken: issueMfaToken(user.id) })
+      }
+    }
+    setSession(res, user.id)
+    res.json({ userId: user.id })
+  } catch (error) { next(error) }
+})
+
+authRouter.post('/login/verify', otpVerifyLimit, async (req, res, next) => {
+  try {
+    const input = z.object({ mfaToken: z.string().min(20).max(2000), code: z.string().regex(/^\d{6}$/) }).parse(req.body)
+    let userId: string
+    try {
+      const payload = jwt.verify(input.mfaToken, secret()) as { sub?: string; purpose?: string }
+      if (payload.purpose !== 'mfa' || !payload.sub) throw new Error('wrong token')
+      userId = payload.sub
+    } catch { return res.status(401).json({ error: 'Verification expired. Please sign in again.' }) }
+    const [rows] = await pool.query<any[]>("SELECT id FROM users WHERE id=? AND status='ACTIVE'", [userId])
+    if (!rows[0] || !(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
+    setSession(res, userId)
+    res.json({ userId })
+  } catch (error) { next(error) }
+})
 
 authRouter.post('/verify-email', otpVerifyLimit, async (req, res, next) => {
   try {
