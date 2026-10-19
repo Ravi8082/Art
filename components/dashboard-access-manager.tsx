@@ -23,7 +23,11 @@ type Account = {
   roles: string[]
   permissions: string[]
   directPermissions: string[]
+  states: string[]
+  eventIds: string[]
 }
+
+type StaffEvent = { id: string; title: string; city: string; state: string }
 
 export function DashboardAccessManager() {
   const [users, setUsers] = useState<Account[]>([])
@@ -32,6 +36,48 @@ export function DashboardAccessManager() {
   const [selected, setSelected] = useState<Account | null>(null)
   const [editRoles, setEditRoles] = useState<string[]>([])
   const [editPermissions, setEditPermissions] = useState<string[]>([])
+  const [editStates, setEditStates] = useState('')
+  const [editEventIds, setEditEventIds] = useState<string[]>([])
+  const [staffEvents, setStaffEvents] = useState<StaffEvent[]>([])
+  const [addingStaff, setAddingStaff] = useState(false)
+  const [newStaff, setNewStaff] = useState({ fullName: '', email: '', password: '', states: '' })
+  const [newStaffEvents, setNewStaffEvents] = useState<string[]>([])
+
+  useEffect(() => {
+    void fetch(`${apiBase}/api/dashboard/staff-events`, { credentials: 'include', headers: { accept: 'application/json' } })
+      .then((response) => response.ok ? response.json() as Promise<{ events?: StaffEvent[] }> : { events: [] })
+      .then((data) => setStaffEvents(data.events ?? []))
+      .catch(() => setStaffEvents([]))
+  }, [])
+
+  const splitStates = (value: string) => value.split(',').map((state) => state.trim()).filter(Boolean)
+  const toggleId = (list: string[], id: string) => list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id]
+
+  async function createStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch(`${apiBase}/api/dashboard/staff`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ ...newStaff, states: splitStates(newStaff.states), eventIds: newStaffEvents }),
+      })
+      const data = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(data.error || `Could not add staff (${response.status})`)
+      setAddingStaff(false)
+      setNewStaff({ fullName: '', email: '', password: '', states: '' })
+      setNewStaffEvents([])
+      setNotice(`Staff account created for ${newStaff.fullName}. Share the password with them securely.`)
+      await loadUsers()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add staff.')
+    } finally {
+      setSaving(false)
+    }
+  }
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -73,6 +119,8 @@ export function DashboardAccessManager() {
     setSelected(account)
     setEditRoles(account.roles)
     setEditPermissions(account.directPermissions)
+    setEditStates((account.states ?? []).join(', '))
+    setEditEventIds(account.eventIds ?? [])
     setError('')
     setNotice('')
   }
@@ -104,8 +152,18 @@ export function DashboardAccessManager() {
       })
       const data = await response.json() as { error?: string; roles?: string[]; directPermissions?: string[] }
       if (!response.ok) throw new Error(data.error || `Could not update roles (${response.status})`)
+      const states = editRoles.includes('REGISTRATION_MANAGER') ? splitStates(editStates) : []
+      const eventIds = editRoles.includes('REGISTRATION_MANAGER') ? editEventIds : []
+      const stateResponse = await fetch(`${apiBase}/api/dashboard/users/${encodeURIComponent(selected.id)}/states`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ states, eventIds }),
+      })
+      const stateData = await stateResponse.json() as { error?: string; states?: string[]; eventIds?: string[] }
+      if (!stateResponse.ok) throw new Error(stateData.error || `Could not update states (${stateResponse.status})`)
       setUsers((current) => current.map((account) => account.id === selected.id
-        ? { ...account, roles: data.roles ?? editRoles, directPermissions: data.directPermissions ?? editPermissions }
+        ? { ...account, roles: data.roles ?? editRoles, directPermissions: data.directPermissions ?? editPermissions, states: stateData.states ?? states, eventIds: stateData.eventIds ?? eventIds }
         : account))
       setSelected(null)
       setNotice(`Access updated for ${selected.fullName}.`)
@@ -127,6 +185,9 @@ export function DashboardAccessManager() {
         <div className="role-access-title">
           <span className="role-access-icon"><ShieldCheck size={25} /></span>
           <div><p className="role-eyebrow">Platform administration</p><h1>Users &amp; Roles</h1><p>Manage account access, dashboard roles and additional permissions.</p></div>
+          <button type="button" className="role-access-refresh" onClick={() => { setError(''); setNotice(''); setAddingStaff(true) }}>
+            <Users size={15} /> Add staff
+          </button>
           <button type="button" className="role-access-refresh" onClick={() => void loadUsers()} disabled={loading}>
             <RefreshCw size={15} className={loading ? 'is-spinning' : ''} /> {loading ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -170,6 +231,29 @@ export function DashboardAccessManager() {
         </section>
         <p className="role-access-note"><ShieldCheck size={15} /> Only a Super Admin can grant Super Admin access. The final active Super Admin account cannot be demoted.</p>
       </div>
+      {addingStaff && (
+        <div className="role-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setAddingStaff(false) }}>
+          <form className="role-edit-modal" onSubmit={createStaff} aria-labelledby="add-staff-title">
+            <button type="button" className="role-modal-close" onClick={() => setAddingStaff(false)} aria-label="Close" disabled={saving}><X size={18} /></button>
+            <p className="role-eyebrow">New staff</p>
+            <h2 id="add-staff-title">Add event staff</h2>
+            <p className="role-modal-email">Staff can scan and see attendees only for the states/events assigned here.</p>
+            <label className="role-access-filter"><span>Full name</span><input required minLength={2} value={newStaff.fullName} onChange={(event) => setNewStaff({ ...newStaff, fullName: event.target.value })} /></label>
+            <label className="role-access-filter"><span>Email</span><input required type="email" value={newStaff.email} onChange={(event) => setNewStaff({ ...newStaff, email: event.target.value })} /></label>
+            <label className="role-access-filter"><span>Temporary password (min 12 characters)</span><input required type="password" minLength={12} autoComplete="new-password" value={newStaff.password} onChange={(event) => setNewStaff({ ...newStaff, password: event.target.value })} /></label>
+            <fieldset className="role-permission-fieldset"><legend>State &amp; event assignment</legend>
+              <input type="text" value={newStaff.states} onChange={(event) => setNewStaff({ ...newStaff, states: event.target.value })} placeholder="States, e.g. Madhya Pradesh, Maharashtra" aria-label="Allowed states" />
+              <p className="role-permission-help">Or pick specific events:</p>
+              <div className="role-permission-options">{staffEvents.map((item) => <label className="role-permission-choice" key={item.id}>
+                <input type="checkbox" checked={newStaffEvents.includes(item.id)} onChange={() => setNewStaffEvents((current) => toggleId(current, item.id))} />
+                <span>{item.title} · {[item.city, item.state].filter(Boolean).join(', ')}</span>
+              </label>)}</div>
+            </fieldset>
+            {error && <p className="role-error" role="alert">{error}</p>}
+            <div className="role-modal-actions"><button type="button" className="role-cancel-button" onClick={() => setAddingStaff(false)} disabled={saving}>Cancel</button><button type="submit" className="role-save-button" disabled={saving}><Save size={15} /> {saving ? 'Creating…' : 'Create staff'}</button></div>
+          </form>
+        </div>
+      )}
       {selected && (
         <div className="role-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setSelected(null) }}>
           <form className="role-edit-modal" onSubmit={saveRoles} aria-labelledby="role-edit-title">
@@ -190,6 +274,15 @@ export function DashboardAccessManager() {
                 <span>{permissionLabel(permission)}</span>
               </label>)}</div>
             </fieldset>
+            {editRoles.includes('REGISTRATION_MANAGER') && <fieldset className="role-permission-fieldset"><legend>Scan &amp; attendee access by state</legend>
+              <p className="role-permission-help">Comma-separated states this staff member may scan, e.g. Madhya Pradesh, Maharashtra. Leave empty to block scanning.</p>
+              <input type="text" value={editStates} onChange={(event) => setEditStates(event.target.value)} placeholder="Madhya Pradesh, Maharashtra" aria-label="Allowed states" />
+              <p className="role-permission-help">Or pick specific events this staff member handles:</p>
+              <div className="role-permission-options">{staffEvents.map((item) => <label className="role-permission-choice" key={item.id}>
+                <input type="checkbox" checked={editEventIds.includes(item.id)} onChange={() => setEditEventIds((current) => toggleId(current, item.id))} />
+                <span>{item.title} · {[item.city, item.state].filter(Boolean).join(', ')}</span>
+              </label>)}</div>
+            </fieldset>}
             {error && <p className="role-error" role="alert">{error}</p>}
             {!editRoles.length && <p className="role-access-validation">Choose at least one role to keep the account eligible for dashboard sign-in.</p>}
             <div className="role-modal-actions"><button type="button" className="role-cancel-button" onClick={() => setSelected(null)} disabled={saving}>Cancel</button><button type="submit" className="role-save-button" disabled={saving || !editRoles.length}><Save size={15} /> {saving ? 'Saving…' : 'Save access'}</button></div>

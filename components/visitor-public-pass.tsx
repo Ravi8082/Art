@@ -13,7 +13,7 @@ type PublicPass = {
   venue: string | null
   startsAt: string
   endsAt: string
-  status: 'Valid' | 'Checked in' | 'Expired' | 'Cancelled' | 'Revoked'
+  status: 'Valid' | 'Used' | 'Not active yet' | 'Expired' | 'Cancelled' | 'Revoked'
   checkedInAt: string | null
 }
 
@@ -25,7 +25,7 @@ function isPublicPass(value: unknown): value is PublicPass {
     && typeof pass.startsAt === 'string'
     && typeof pass.endsAt === 'string'
     && typeof pass.status === 'string'
-    && ['Valid', 'Checked in', 'Expired', 'Cancelled', 'Revoked'].includes(pass.status)
+    && ['Valid', 'Used', 'Not active yet', 'Expired', 'Cancelled', 'Revoked'].includes(pass.status)
     && (pass.city === null || typeof pass.city === 'string')
     && (pass.venue === null || typeof pass.venue === 'string')
     && (pass.checkedInAt === null || typeof pass.checkedInAt === 'string')
@@ -73,7 +73,7 @@ export function VisitorPublicPass({ token }: { token: string }) {
   }, [token])
 
   const status = pass?.status ?? ''
-  const valid = status === 'Valid' || status === 'Checked in'
+  const valid = status === 'Valid'
 
   return (
     <main className="visitor-public-page">

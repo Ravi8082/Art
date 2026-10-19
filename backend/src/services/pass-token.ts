@@ -24,6 +24,23 @@ export function passIdFromToken(token: string, secret: string) {
   return passId
 }
 
+const referenceAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const referencePattern = /^[A-Z0-9]{12}$/
+
+// The QR code carries only this opaque reference; everything else is fetched from the database on scan.
+export function newReferenceCode() {
+  const bytes = crypto.randomBytes(12)
+  return Array.from(bytes, (byte) => referenceAlphabet[byte % referenceAlphabet.length]).join('')
+}
+
+export function referenceFromScannedValue(value: string) {
+  const cleaned = value.trim().toUpperCase().replace(/[\s-]/g, '')
+  const candidate = cleaned.startsWith('HOA') && cleaned.length === 15 ? cleaned.slice(3) : cleaned
+  return referencePattern.test(candidate) ? candidate : null
+}
+
+export const referenceQrValue = (reference: string) => `HOA-${reference}`
+
 export function hashPassToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex')
 }

@@ -4,16 +4,20 @@ import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
 import { hasValidMediaSignature, supportedMediaTypes } from '../services/media-validation.js'
+import { announceEvent } from './newsletter.js'
+import rateLimit from 'express-rate-limit'
+import { cachePublic } from '../middleware/cache.js'
 
 export const eventsRouter = Router()
-const eventInput = z.object({ title: z.string().trim().min(2).max(255), description: z.string().trim().min(10), startsAt: z.coerce.date(), endsAt: z.coerce.date(), venue: z.string().trim().min(2).max(255), city: z.string().trim().max(120).default(''), registrationDeadline: z.coerce.date().nullable().optional() }).refine((value) => value.endsAt > value.startsAt, 'End must be after start')
+const announceLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
+const eventInput = z.object({ title: z.string().trim().min(2).max(255), description: z.string().trim().min(10), startsAt: z.coerce.date(), endsAt: z.coerce.date(), venue: z.string().trim().min(2).max(255), city: z.string().trim().max(120).default(''), state: z.string().trim().max(80).default(''), registrationDeadline: z.coerce.date().nullable().optional() }).refine((value) => value.endsAt > value.startsAt, 'End must be after start')
 const slugify = (value: string) => `${value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${crypto.randomBytes(3).toString('hex')}`
 
-eventsRouter.get('/', async (_req, res, next) => {
+eventsRouter.get('/', cachePublic(30), async (_req, res, next) => {
   try {
     const [events] = await pool.query<any[]>(`
       SELECT e.id, e.slug, e.title, e.description, e.starts_at startsAt, e.ends_at endsAt,
-        e.venue, e.city, e.status
+        e.venue, e.city, e.state, e.status
       FROM events e
       WHERE e.status IN ('PUBLISHED','APPROVED')
       ORDER BY e.starts_at
@@ -64,7 +68,7 @@ eventsRouter.get('/:id/media/:mediaId', async (req, res, next) => {
   }
 })
 
-eventsRouter.post('/', requireAuth, requirePermission('events:create'), async (req: AuthRequest, res, next) => { try { const value = eventInput.parse(req.body); const id = crypto.randomUUID(); await pool.query('INSERT INTO events(id,title,slug,description,starts_at,ends_at,venue,city,registration_deadline,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,\'PENDING_APPROVAL\',?)', [id,value.title,slugify(value.title),value.description,value.startsAt,value.endsAt,value.venue,value.city,value.registrationDeadline ?? null,req.user!.id]); res.status(201).json({ id, status: 'PENDING_APPROVAL' }) } catch (error) { next(error) } })
+eventsRouter.post('/', requireAuth, requirePermission('events:create'), async (req: AuthRequest, res, next) => { try { const value = eventInput.parse(req.body); const id = crypto.randomUUID(); await pool.query('INSERT INTO events(id,title,slug,description,starts_at,ends_at,venue,city,state,registration_deadline,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,\'PENDING_APPROVAL\',?)', [id,value.title,slugify(value.title),value.description,value.startsAt,value.endsAt,value.venue,value.city,value.state,value.registrationDeadline ?? null,req.user!.id]); res.status(201).json({ id, status: 'PENDING_APPROVAL' }) } catch (error) { next(error) } })
 
 eventsRouter.post('/:id/media', requireAuth, requirePermission('content:manage'), raw({
   type: [...supportedMediaTypes.keys()],
@@ -101,8 +105,10 @@ eventsRouter.post('/:id/media', requireAuth, requirePermission('content:manage')
 })
 
 eventsRouter.patch('/:id/approve', requireAuth, requirePermission('events:approve'), async (req: AuthRequest, res, next) => { try { const [result] = await pool.query<any>('UPDATE events SET status=\'APPROVED\',approved_by=? WHERE id=? AND status=\'PENDING_APPROVAL\'', [req.user!.id, req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Event is not awaiting approval' }); res.json({ status: 'APPROVED' }) } catch (error) { next(error) } })
-eventsRouter.patch('/:id', requireAuth, requirePermission('events:edit'), async (req: AuthRequest, res, next) => { try { const value = eventInput.partial().parse(req.body); const fields = Object.entries(value); if (!fields.length) return res.status(400).json({ error: 'At least one field is required' }); const allowed = new Set(['title','description','startsAt','endsAt','venue','city','registrationDeadline']); const updates = fields.filter(([key]) => allowed.has(key)); if (!updates.length) return res.status(400).json({ error: 'No editable fields supplied' }); const set = updates.map(([key]) => `${key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}=?`).join(','); const values = updates.map(([, value]) => value); const [result] = await pool.query<any>(`UPDATE events SET ${set}, status='PENDING_APPROVAL' WHERE id=? AND status NOT IN ('PUBLISHED')`, [...values, req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Event cannot be edited in its current state' }); res.json({ status: 'PENDING_APPROVAL' }) } catch (error) { next(error) } })
+eventsRouter.patch('/:id', requireAuth, requirePermission('events:edit'), async (req: AuthRequest, res, next) => { try { const value = eventInput.partial().parse(req.body); const fields = Object.entries(value); if (!fields.length) return res.status(400).json({ error: 'At least one field is required' }); const allowed = new Set(['title','description','startsAt','endsAt','venue','city','state','registrationDeadline']); const updates = fields.filter(([key]) => allowed.has(key)); if (!updates.length) return res.status(400).json({ error: 'No editable fields supplied' }); const set = updates.map(([key]) => `${key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}=?`).join(','); const values = updates.map(([, value]) => value); const [result] = await pool.query<any>(`UPDATE events SET ${set}, status='PENDING_APPROVAL' WHERE id=? AND status NOT IN ('PUBLISHED')`, [...values, req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Event cannot be edited in its current state' }); res.json({ status: 'PENDING_APPROVAL' }) } catch (error) { next(error) } })
 
-eventsRouter.patch('/:id/publish', requireAuth, requirePermission('events:publish'), async (req, res, next) => { try { const [result] = await pool.query<any>('UPDATE events SET status=\'PUBLISHED\',published_at=NOW() WHERE id=? AND status=\'APPROVED\'', [req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Only approved events can be published' }); res.json({ status: 'PUBLISHED' }) } catch (error) { next(error) } })
+eventsRouter.patch('/:id/publish', requireAuth, requirePermission('events:publish'), async (req, res, next) => { try { const [result] = await pool.query<any>('UPDATE events SET status=\'PUBLISHED\',published_at=NOW() WHERE id=? AND status=\'APPROVED\'', [req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Only approved events can be published' }); void announceEvent(String(req.params.id)).catch((error) => console.error('Event announcement failed', error)); res.json({ status: 'PUBLISHED' }) } catch (error) { next(error) } })
+
+eventsRouter.post('/:id/announce', requireAuth, requirePermission('events:publish'), announceLimit, async (req: AuthRequest, res, next) => { try { const outcome = await announceEvent(String(req.params.id), { force: true }); await pool.query('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)', [req.user!.id, 'EVENT_ANNOUNCE_RESEND', 'event', String(req.params.id), JSON.stringify(outcome)]); res.json(outcome) } catch (error) { next(error) } })
 
 eventsRouter.patch('/:id/archive', requireAuth, requirePermission('events:publish'), async (req, res, next) => { try { const [result] = await pool.query<any>(`UPDATE events SET status='REJECTED' WHERE id=? AND status='PUBLISHED'`, [req.params.id]); if (!result.affectedRows) return res.status(409).json({ error: 'Only published events can be archived' }); res.json({ status: 'REJECTED' }) } catch (error) { next(error) } })

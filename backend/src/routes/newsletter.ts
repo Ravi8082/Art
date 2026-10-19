@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { queueEmail, secureToken, hashToken } from '../services/mailer.js'
+import { enqueueSubscribers, enqueueConsentedVisitors } from '../services/outbox.js'
 
 export const newsletterRouter = Router()
 
@@ -75,21 +76,42 @@ newsletterRouter.post('/unsubscribe', async (req, res, next) => {
 })
 
 export async function notifyNewsletterSubscribers(post: { id: string; title: string; excerpt: string }) {
-  const [subscribers] = await pool.query<any[]>('SELECT id,email FROM newsletter_subscribers WHERE unsubscribed_at IS NULL')
-  const outcomes = await Promise.allSettled(subscribers.map(async (subscriber) => {
-    const token = await createUnsubscribeToken(subscriber.id)
-    const articleUrl = publicUrl(`/blog/${encodeURIComponent(post.id)}`)
-    const unsubscribeUrl = publicUrl(`/newsletter/unsubscribe?token=${encodeURIComponent(token)}`)
-    const text = [
-      `A new story from The Haat of Art: ${post.title}`,
-      post.excerpt,
-      `Read the story: ${articleUrl}`,
-      `Unsubscribe: ${unsubscribeUrl}`,
-    ].filter(Boolean).join('\n\n')
-    return queueEmail(subscriber.email, `New from The Haat of Art: ${post.title}`, text, { whatsapp: 'consented' })
-  }))
-  for (const outcome of outcomes) {
-    if (outcome.status === 'rejected') console.error('Newsletter delivery could not be queued', outcome.reason)
-    else if (!outcome.value.delivered) console.error(`Newsletter email for ${outcome.value.id} was not delivered`)
-  }
+  const articleUrl = publicUrl(`/blog/${encodeURIComponent(post.id)}`)
+  const body = [
+    `A new story from The Haat of Art: ${post.title}`,
+    post.excerpt,
+    `Read the story: ${articleUrl}`,
+  ].filter(Boolean).join('\n\n')
+  await enqueueSubscribers(`New from The Haat of Art: ${post.title}`, body)
+}
+
+// Emails every active subscriber and consenting visitor once per event about registration for the pass.
+export async function announceEvent(eventId: string, { force = false } = {}) {
+  const [claim] = await pool.query<any>(
+    `UPDATE events SET announced_at=NOW() WHERE id=? AND status IN ('APPROVED','PUBLISHED')${force ? '' : ' AND announced_at IS NULL'}`,
+    [eventId],
+  )
+  if (!claim.affectedRows) return { queued: 0 }
+  const [[event]] = await pool.query<any[]>(
+    'SELECT slug,title,description,city,state,venue,starts_at startsAt,ends_at endsAt FROM events WHERE id=?', [eventId])
+  const registerUrl = publicUrl(`/pass/${encodeURIComponent(event.slug)}`)
+  const place = [event.venue, event.city, event.state].filter(Boolean).join(', ')
+  const when = new Date(event.startsAt).toDateString() === new Date(event.endsAt).toDateString()
+    ? new Date(event.startsAt).toDateString()
+    : `${new Date(event.startsAt).toDateString()} – ${new Date(event.endsAt).toDateString()}`
+  const body = [
+    `Upcoming exhibition: ${event.title}`,
+    `When: ${when}`,
+    `Where: ${place}`,
+    event.description,
+    `Register for your free entry pass: ${registerUrl}`,
+    'Your QR pass is active only on the day of the exhibition and works for a single entry.',
+  ].join('\n\n')
+  const subject = `Upcoming exhibition: ${event.title}`
+
+  // Emails are queued in the outbox and delivered by the background worker in rate-limited batches.
+  const subscribers = await enqueueSubscribers(subject, body)
+  const visitors = await enqueueConsentedVisitors(subject,
+    `${body}\n\nYou receive this because you agreed to updates when registering. Reply to this email to opt out.`)
+  return { queued: subscribers + visitors }
 }

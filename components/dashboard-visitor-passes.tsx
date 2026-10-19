@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import QRCode from 'qrcode'
 import { ArrowLeft, CalendarDays, Check, MapPin, QrCode, TicketCheck } from 'lucide-react'
-import { visitorPassUrl } from '@/lib/visitor-pass-url'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
@@ -167,8 +166,7 @@ function VisitorPassCard({ pass }: { pass: VisitorPass }) {
   useEffect(() => {
     if (!pass.qrData) return
     let active = true
-    const publicPassUrl = visitorPassUrl(pass.qrData, window.location.origin)
-    void QRCode.toDataURL(publicPassUrl, { errorCorrectionLevel: 'M', margin: 1, width: 200 })
+    void QRCode.toDataURL(pass.qrData, { errorCorrectionLevel: 'M', margin: 1, width: 200 })
       .then((image) => { if (active) setQrImage(image) })
       .catch(() => { if (active) setQrError('QR code could not be displayed. Please reload this page.') })
     return () => { active = false }

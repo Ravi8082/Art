@@ -1,11 +1,12 @@
 import crypto from 'node:crypto'
-import { Router } from 'express'
+import { Router, type NextFunction, type Request, type Response } from 'express'
 import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, requireRole, type AuthRequest } from '../middleware/auth.js'
 import { hashOtp, otpCode, otpExpiry, queueEmail } from '../services/mailer.js'
-import { hashPassToken, passIdFromToken, passTokenForId, tokenFromScannedValue } from '../services/pass-token.js'
+import { cachePublic } from '../middleware/cache.js'
+import { hashPassToken, newReferenceCode, passIdFromToken, referenceFromScannedValue, referenceQrValue, tokenFromScannedValue } from '../services/pass-token.js'
 
 export const passesRouter = Router()
 
@@ -17,12 +18,67 @@ function signingSecret() {
 
 const visitor = [requireAuth, requireRole('VISITOR'), requirePermission('passes:read')] as const
 const checkInStaff = [requireAuth, requireRole('REGISTRATION_MANAGER', 'ADMIN', 'SUPER_ADMIN'), requirePermission('registrations:read')] as const
-const publicPassLookupLimit = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false })
+const publicPassLookupLimit = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false })
+// Staff share venue Wi-Fi/NAT, so scans are limited per account rather than per IP.
+const checkInLimit = rateLimit({
+  windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthRequest).user?.id ?? 'anonymous',
+  validate: { keyGeneratorIpFallback: false },
+})
 const publicRegistrationLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
 const publicVerificationLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
 const indoreEventSlug = 'the-haat-of-art-indore-2026'
+const adminRoles = ['ADMIN', 'SUPER_ADMIN']
+const isAdmin = (req: AuthRequest) => Boolean(req.user?.roles.some((role) => adminRoles.includes(role)))
 
-passesRouter.post('/public/indore/register', publicRegistrationLimit, async (req, res, next) => {
+// Staff only see and scan events an admin assigned to them directly, or events located in a state assigned to them.
+type StaffScope = { states: string[]; eventIds: string[] }
+async function staffScope(req: AuthRequest): Promise<StaffScope | null> {
+  if (isAdmin(req)) return null
+  const [states] = await pool.query<any[]>('SELECT state FROM staff_state_access WHERE user_id=?', [req.user!.id])
+  const [events] = await pool.query<any[]>('SELECT event_id FROM staff_event_access WHERE user_id=?', [req.user!.id])
+  return { states: states.map((row) => String(row.state).toLowerCase()), eventIds: events.map((row) => String(row.event_id)) }
+}
+
+function scopeCondition(scope: StaffScope, alias: string) {
+  const parts: string[] = []
+  const params: string[] = []
+  if (scope.eventIds.length) { parts.push(`${alias}.id IN (${scope.eventIds.map(() => '?').join(',')})`); params.push(...scope.eventIds) }
+  if (scope.states.length) { parts.push(`LOWER(${alias}.state) IN (${scope.states.map(() => '?').join(',')})`); params.push(...scope.states) }
+  return { sql: parts.length ? `(${parts.join(' OR ')})` : '1=0', params }
+}
+
+const scopeAllows = (scope: StaffScope, event: { id: string; state: string }) =>
+  scope.eventIds.includes(event.id) || scope.states.includes(String(event.state).toLowerCase())
+
+const openEventWhere = `e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=NOW()
+  AND (e.registration_deadline IS NULL OR e.registration_deadline>NOW())`
+
+passesRouter.get('/public/events', publicPassLookupLimit, cachePublic(30), async (_req, res, next) => {
+  try {
+    const [events] = await pool.query<any[]>(`SELECT e.slug,e.title,e.city,e.state,e.venue,
+      e.starts_at startsAt,e.ends_at endsAt,e.registration_deadline registrationDeadline
+      FROM events e WHERE ${openEventWhere} ORDER BY e.starts_at LIMIT 50`)
+    res.json({ events })
+  } catch (error) {
+    next(error)
+  }
+})
+
+passesRouter.get('/public/events/:slug', publicPassLookupLimit, cachePublic(30), async (req, res, next) => {
+  try {
+    const slug = z.string().trim().min(1).max(255).parse(req.params.slug)
+    const [[event]] = await pool.query<any[]>(`SELECT e.slug,e.title,e.description,e.city,e.state,e.venue,
+      e.starts_at startsAt,e.ends_at endsAt,e.registration_deadline registrationDeadline
+      FROM events e WHERE e.slug=? AND ${openEventWhere} LIMIT 1`, [slug])
+    if (!event) return res.status(404).json({ error: 'Registration is not open for this exhibition.' })
+    res.json({ event })
+  } catch (error) {
+    next(error)
+  }
+})
+
+const publicRegister = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = z.object({
       fullName: z.string().trim().min(2).max(160),
@@ -33,9 +89,9 @@ passesRouter.post('/public/indore/register', publicRegistrationLimit, async (req
       marketingConsent: z.boolean(),
     }).parse(req.body)
     const email = input.email.toLowerCase()
-    const [[event]] = await pool.query<any[]>(`SELECT id,title FROM events
-      WHERE slug=? AND status IN ('APPROVED','PUBLISHED') AND ends_at>=NOW()
-        AND (registration_deadline IS NULL OR registration_deadline>NOW()) LIMIT 1`, [indoreEventSlug])
+    const eventSlug = typeof req.params.slug === 'string' ? req.params.slug : indoreEventSlug
+    const [[event]] = await pool.query<any[]>(`SELECT id,title FROM events e
+      WHERE slug=? AND ${openEventWhere} LIMIT 1`, [eventSlug])
     if (!event) return res.status(409).json({ error: 'Free entry registration is not open for this exhibition right now.' })
     const [[recent]] = await pool.query<any[]>(`SELECT id FROM visitor_registration_challenges
       WHERE email=? AND event_id=? AND consumed_at IS NULL AND created_at>DATE_SUB(NOW(),INTERVAL 1 MINUTE)
@@ -63,9 +119,11 @@ passesRouter.post('/public/indore/register', publicRegistrationLimit, async (req
   } catch (error) {
     next(error)
   }
-})
+}
+passesRouter.post('/public/indore/register', publicRegistrationLimit, publicRegister)
+passesRouter.post('/public/events/:slug/register', publicRegistrationLimit, publicRegister)
 
-passesRouter.post('/public/indore/verify', publicVerificationLimit, async (req, res, next) => {
+const publicVerify = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = z.object({
       email: z.string().email().max(255),
@@ -127,12 +185,13 @@ passesRouter.post('/public/indore/verify', publicVerificationLimit, async (req, 
         registration = { registrationId, status: 'REGISTERED', passId: null, revokedAt: null }
       }
       const passId = registration.passId ?? crypto.randomUUID()
-      const qrData = passTokenForId(passId, signingSecret())
+      const reference = newReferenceCode()
+      const qrData = referenceQrValue(reference)
       if (registration.passId) {
-        await connection.query('UPDATE qr_passes SET token_hash=?,revoked_at=NULL WHERE id=?', [hashPassToken(qrData), passId])
+        await connection.query('UPDATE qr_passes SET token_hash=?,reference_code=?,revoked_at=NULL WHERE id=?', [hashPassToken(reference), reference, passId])
       } else {
-        await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash) VALUES (?,?,?)',
-          [passId, registration.registrationId, hashPassToken(qrData)])
+        await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash,reference_code) VALUES (?,?,?,?)',
+          [passId, registration.registrationId, hashPassToken(reference), reference])
       }
       await connection.query(
         'INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (NULL,?,?,?,?)',
@@ -154,7 +213,7 @@ passesRouter.post('/public/indore/verify', publicVerificationLimit, async (req, 
       }
     })
     if (!result.pass) return res.status(result.status).json({ error: result.error })
-    const passMessage = `Your free entry pass for ${result.pass.eventTitle} is confirmed. Open this link to view your pass: ${process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000'}/visitor/pass/${encodeURIComponent(result.pass.qrData)}`
+    const passMessage = `Your free entry pass for ${result.pass.eventTitle} is confirmed. Your pass reference is ${referenceFromScannedValue(result.pass.qrData)}. It is active only on the day of the exhibition and works for one entry. View your pass: ${process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000'}/visitor/pass/${encodeURIComponent(result.pass.qrData)}`
     const emailDelivery = await queueEmail(email, 'Your Haat of Art free entry pass', passMessage)
     if (!emailDelivery.delivered) {
       console.error('Visitor entry-pass confirmation email could not be delivered', { reason: emailDelivery.reason })
@@ -169,37 +228,45 @@ passesRouter.post('/public/indore/verify', publicVerificationLimit, async (req, 
   } catch (error) {
     next(error)
   }
-})
+}
+passesRouter.post('/public/indore/verify', publicVerificationLimit, publicVerify)
+passesRouter.post('/public/events/:slug/verify', publicVerificationLimit, publicVerify)
 
 passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store')
     const token = z.string().min(1).max(160).parse(req.params.token)
-    const passId = passIdFromToken(token, signingSecret())
-    if (!passId) return res.status(404).json({ error: 'This visitor pass could not be found' })
+    const scanned = tokenFromScannedValue(token)
+    const reference = referenceFromScannedValue(scanned)
+    const legacyPassId = reference ? null : passIdFromToken(scanned, signingSecret())
+    if (!reference && !legacyPassId) return res.status(404).json({ error: 'This visitor pass could not be found' })
     const [rows] = await pool.query<any[]>(`SELECT q.id,q.token_hash,q.revoked_at,
-      r.status registrationStatus,e.title eventTitle,e.city,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+      r.status registrationStatus,e.title eventTitle,e.city,e.state,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+      (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver,
       v.full_name visitorName,c.checked_in_at checkedInAt
       FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id
       JOIN events e ON e.id=r.event_id JOIN visitor_profiles v ON v.id=r.visitor_id
-      LEFT JOIN check_ins c ON c.pass_id=q.id WHERE q.id=? LIMIT 1`, [passId])
+      LEFT JOIN check_ins c ON c.pass_id=q.id WHERE ${reference ? 'q.reference_code=?' : 'q.id=?'} LIMIT 1`, [reference ?? legacyPassId])
     const pass = rows[0]
-    if (!pass || pass.token_hash !== hashPassToken(token)) {
+    if (!pass || (!reference && pass.token_hash !== hashPassToken(scanned))) {
       return res.status(404).json({ error: 'This visitor pass could not be found' })
     }
     const status = pass.revoked_at
       ? 'Revoked'
       : pass.registrationStatus !== 'REGISTERED'
         ? 'Cancelled'
-        : new Date(pass.endsAt).getTime() < Date.now()
-          ? 'Expired'
-          : pass.checkedInAt
-            ? 'Checked in'
-            : 'Valid'
+        : pass.checkedInAt
+          ? 'Used'
+          : pass.dayOver
+            ? 'Expired'
+            : pass.notStarted
+              ? 'Not active yet'
+              : 'Valid'
     res.json({
       attendee: pass.visitorName,
       event: pass.eventTitle,
       city: pass.city,
+      state: pass.state,
       venue: pass.venue,
       startsAt: pass.startsAt,
       endsAt: pass.endsAt,
@@ -213,7 +280,7 @@ passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next)
 
 passesRouter.get('/visitor/events', ...visitor, async (_req, res, next) => {
   try {
-    const [events] = await pool.query<any[]>(`SELECT e.id, e.title, e.city, e.venue,
+    const [events] = await pool.query<any[]>(`SELECT e.id, e.title, e.city, e.state, e.venue,
       e.starts_at startsAt, e.ends_at endsAt, e.registration_deadline registrationDeadline,
       e.description, e.status
       FROM events e
@@ -233,7 +300,7 @@ passesRouter.get('/visitor/passes', ...visitor, async (req: AuthRequest, res, ne
     if (!profiles) return res.json({ passes: [] })
     const [passes] = await pool.query<any[]>(`SELECT q.id passId, e.id eventId, e.title, e.city,
       e.venue, e.starts_at startsAt, e.ends_at endsAt, q.revoked_at revokedAt,
-      c.checked_in_at checkedInAt
+      q.reference_code referenceCode, c.checked_in_at checkedInAt
       FROM event_registrations r JOIN events e ON e.id=r.event_id
       JOIN qr_passes q ON q.registration_id=r.id
       LEFT JOIN check_ins c ON c.pass_id=q.id
@@ -242,8 +309,8 @@ passesRouter.get('/visitor/passes', ...visitor, async (req: AuthRequest, res, ne
     res.json({
       passes: passes.map((pass: any) => ({
         ...pass,
-        qrData: pass.revokedAt ? null : passTokenForId(pass.passId, signingSecret()),
-        status: pass.revokedAt ? 'Revoked' : pass.checkedInAt ? 'Checked in' : 'Active',
+        qrData: pass.revokedAt || pass.checkedInAt || !pass.referenceCode ? null : referenceQrValue(pass.referenceCode),
+        status: pass.revokedAt ? 'Revoked' : pass.checkedInAt ? 'Used' : 'Active',
       })),
     })
   } catch (error) {
@@ -294,14 +361,20 @@ passesRouter.get('/attendees', ...checkInStaff, async (req, res, next) => {
     if (!searchInput.success) return res.status(400).json({ error: 'Search must be 120 characters or fewer' })
     const conditions = ["e.ends_at >= DATE_SUB(NOW(),INTERVAL 30 DAY)", "r.status='REGISTERED'"]
     const params: unknown[] = []
+    const scope = await staffScope(req as AuthRequest)
+    const scopeSql = scope ? scopeCondition(scope, 'e') : null
+    if (scopeSql) {
+      conditions.push(scopeSql.sql)
+      params.push(...scopeSql.params)
+    }
     if (eventInput?.success) { conditions.push('e.id=?'); params.push(eventInput.data) }
     if (searchInput.data) {
       conditions.push('(v.full_name LIKE ? OR v.email LIKE ?)')
       params.push(`%${searchInput.data}%`, `%${searchInput.data}%`)
     }
-    const [events] = await pool.query<any[]>(`SELECT id,title,city,starts_at startsAt
-      FROM events WHERE ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
-      ORDER BY starts_at DESC LIMIT 100`)
+    const [events] = await pool.query<any[]>(`SELECT e.id,e.title,e.city,e.state,e.starts_at startsAt
+      FROM events e WHERE e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${scopeSql ? `AND ${scopeSql.sql}` : ''}
+      ORDER BY e.starts_at DESC LIMIT 100`, scopeSql?.params ?? [])
     const [attendees] = await pool.query<any[]>(`SELECT r.id registrationId,v.full_name fullName,v.email,
       e.id eventId,e.title eventTitle,e.city,e.starts_at startsAt,r.created_at registeredAt,
       c.checked_in_at checkedInAt
@@ -342,11 +415,12 @@ passesRouter.post('/visitor/events/:eventId/register', ...visitor, async (req: A
 
       const registrationId = crypto.randomUUID()
       const passId = crypto.randomUUID()
-      const qrData = passTokenForId(passId, signingSecret())
+      const reference = newReferenceCode()
+      const qrData = referenceQrValue(reference)
       await connection.query('INSERT INTO event_registrations(id,event_id,visitor_id,status) VALUES (?,?,?,\'REGISTERED\')',
         [registrationId, eventId, profileId])
-      await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash) VALUES (?,?,?)',
-        [passId, registrationId, hashPassToken(qrData)])
+      await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash,reference_code) VALUES (?,?,?,?)',
+        [passId, registrationId, hashPassToken(reference), reference])
       await connection.query(
         'INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)',
         [req.user!.id, 'visitor.pass.issued', 'event_registration', registrationId, JSON.stringify({ eventId })],
@@ -364,28 +438,42 @@ passesRouter.post('/visitor/events/:eventId/register', ...visitor, async (req: A
   }
 })
 
-passesRouter.post('/check-in', requireAuth, requirePermission('passes:scan'), async (req: AuthRequest, res, next) => {
+passesRouter.post('/check-in', requireAuth, requirePermission('passes:scan'), checkInLimit, async (req: AuthRequest, res, next) => {
   try {
     const input = z.object({ token: z.string().trim().min(1).max(512) }).parse(req.body)
     const token = tokenFromScannedValue(input.token)
-    const passId = passIdFromToken(token, signingSecret())
-    if (!passId) return res.status(400).json({ error: 'This QR pass is invalid' })
+    const reference = referenceFromScannedValue(token)
+    const legacyPassId = reference ? null : passIdFromToken(token, signingSecret())
+    if (!reference && !legacyPassId) return res.status(400).json({ error: 'This QR pass is invalid' })
+    const scope = await staffScope(req)
 
     const result = await withTransaction(async (connection) => {
       const [passRows] = await connection.query<any[]>(`SELECT q.id,q.token_hash,q.revoked_at,
-        r.status registrationStatus,e.title eventTitle,e.ends_at eventEndsAt,
+        r.status registrationStatus,e.id eventId,e.title eventTitle,e.state eventState,e.starts_at eventStartsAt,
+        (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver,
         v.full_name visitorName,v.email visitorEmail,c.checked_in_at checkedInAt
         FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id
         JOIN events e ON e.id=r.event_id JOIN visitor_profiles v ON v.id=r.visitor_id
-        LEFT JOIN check_ins c ON c.pass_id=q.id WHERE q.id=? FOR UPDATE`, [passId])
+        LEFT JOIN check_ins c ON c.pass_id=q.id WHERE ${reference ? 'q.reference_code=?' : 'q.id=?'} FOR UPDATE OF q`, [reference ?? legacyPassId])
       const pass = passRows[0]
-      if (!pass || pass.revoked_at || pass.token_hash !== hashPassToken(token)) {
+      const passId = pass?.id as string | undefined
+      if (!pass || pass.revoked_at || (!reference && pass.token_hash !== hashPassToken(token))) {
         return { status: 404 as const, error: 'This pass is not active' }
       }
+      if (scope && !scopeAllows(scope, { id: pass.eventId, state: pass.eventState })) {
+        await connection.query(
+          'INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)',
+          [req.user!.id, 'visitor.pass.scan_denied_scope', 'qr_pass', passId, JSON.stringify({ eventId: pass.eventId, eventState: pass.eventState })],
+        )
+        return { status: 403 as const, error: `This pass is for "${pass.eventTitle}"${pass.eventState ? ` (${pass.eventState})` : ''}, which is not assigned to you.` }
+      }
       if (pass.registrationStatus !== 'REGISTERED') return { status: 409 as const, error: 'This registration is cancelled' }
-      if (new Date(pass.eventEndsAt).getTime() < Date.now()) return { status: 410 as const, error: 'This exhibition has ended' }
       if (pass.checkedInAt) {
-        return { status: 409 as const, error: 'This pass has already been checked in', checkedInAt: pass.checkedInAt }
+        return { status: 409 as const, error: 'This pass has already been used and is expired', checkedInAt: pass.checkedInAt }
+      }
+      if (pass.dayOver) return { status: 410 as const, error: 'This pass has expired because the event day is over' }
+      if (pass.notStarted) {
+        return { status: 425 as const, error: `This pass is not active yet. It works on ${new Date(pass.eventStartsAt).toDateString()}.` }
       }
       await connection.query('INSERT INTO check_ins(id,pass_id,checked_in_by) VALUES (?,?,?)',
         [crypto.randomUUID(), passId, req.user!.id])

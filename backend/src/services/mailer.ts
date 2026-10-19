@@ -6,6 +6,12 @@ const transport = process.env.SMTP_HOST ? nodemailer.createTransport({
   port: Number(process.env.SMTP_PORT ?? 587),
   secure: process.env.SMTP_SECURE === 'true',
   auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } : undefined,
+  pool: true,
+  maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS ?? 10),
+  maxMessages: 200,
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
 }) : null
 
 export async function sendEmail(to: string, subject: string, text: string) {
@@ -25,23 +31,22 @@ export async function queueEmail(to: string, template: string, text: string, opt
   }
   const id = crypto.randomUUID()
   const { pool } = await import('../db/pool.js')
-  await pool.query('INSERT INTO email_delivery_records(id,recipient_email,template,status) VALUES (?,?,?,\'QUEUED\')', [id, to, template])
+  let delivered = false
+  let reason: string | undefined
   try {
     const result = await sendEmail(to, template, text)
-    if (!result.configured) {
-      await pool.query("UPDATE email_delivery_records SET status='FAILED',last_error=?,attempts=attempts+1 WHERE id=?", ['SMTP not configured', id])
-      return { id, delivered: false, reason: 'SMTP not configured' }
-    }
-    if (!result.accepted) {
-      await pool.query("UPDATE email_delivery_records SET status='FAILED',last_error=?,attempts=attempts+1 WHERE id=?", ['Email provider did not accept the recipient', id])
-      return { id, delivered: false, reason: 'Email provider did not accept the recipient' }
-    }
-    await pool.query('UPDATE email_delivery_records SET status=\'SENT\',sent_at=NOW(),attempts=attempts+1 WHERE id=?', [id])
-    return { id, delivered: true }
-  } catch (error) {
-    await pool.query('UPDATE email_delivery_records SET status=\'FAILED\',last_error=?,attempts=attempts+1 WHERE id=?', [error instanceof Error ? error.message : 'Provider failure', id])
-    return { id, delivered: false, reason: 'Provider failure' }
+    if (!result.configured) reason = 'SMTP not configured'
+    else if (!result.accepted) reason = 'Email provider did not accept the recipient'
+    else delivered = true
+  } catch {
+    reason = 'Provider failure'
   }
+  // A single write per email keeps OTP/transactional mail cheap under load.
+  await pool.query(
+    'INSERT INTO email_delivery_records(id,recipient_email,template,status,attempts,last_error,sent_at) VALUES (?,?,?,?,1,?,?)',
+    [id, to, template, delivered ? 'SENT' : 'FAILED', reason ?? null, delivered ? new Date() : null],
+  ).catch((error) => console.error('Email delivery record failed', error instanceof Error ? error.message : 'unknown'))
+  return delivered ? { id, delivered: true } : { id, delivered: false, reason }
 }
 
 import crypto from 'node:crypto'

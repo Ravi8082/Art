@@ -65,6 +65,16 @@ CREATE DATABASE art_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 Copy `.env.example` to `.env`, set `MYSQL_DATABASE=art`, and set `TEST_MYSQL_DATABASE=art_test`. Run `pnpm --dir backend migrate` for the development database; integration tests should override `MYSQL_DATABASE` with `art_test` in a dedicated test shell. `MAIL_MODE=log` keeps development email delivery local; OTPs and tokens are never logged by the application.
 
+## Production, security and scale (200k+ visitors/day)
+
+- `NODE_ENV=production` refuses to start unless `COOKIE_SECRET` and `JWT_SECRET` are strong (32+ characters).
+- `TRUST_PROXY=<hops>` (e.g. `1`) must be set behind a load balancer/CDN so rate limits use the real client IP.
+- `RATE_LIMIT_PER_MINUTE` (default 600 per IP), `DB_POOL_SIZE` (default 30), `DB_QUEUE_LIMIT` (default 2000).
+- Announcement and newsletter emails go through the `email_outbox` table. A background worker (`OUTBOX_WORKER=off` disables it; tune `OUTBOX_BATCH_SIZE`, `OUTBOX_CONCURRENCY`) sends in batches with retries and backoff, safe with several instances. Use a transactional SMTP provider (SES, Brevo, SendGrid) with a quota that fits your audience; `SMTP_MAX_CONNECTIONS` controls the pool.
+- Public event lists are cached for 30 seconds in memory and via `Cache-Control` for CDNs.
+- Staff check-ins are limited per account (120/min), not per IP. Scans outside a staff member's assigned events/states are rejected and audit-logged.
+- Rate limiters and caches are per process. Before running multiple instances, move rate limits to a shared store (Redis) and use a managed MySQL.
+
 ## Verification
 
 - `pnpm --dir backend build` — backend TypeScript build

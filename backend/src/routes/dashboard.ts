@@ -1,8 +1,13 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
+import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
-import { passTokenForId } from '../services/pass-token.js'
+import { referenceQrValue } from '../services/pass-token.js'
+
+const adminWriteLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false })
 
 export const dashboardRouter = Router()
 
@@ -26,7 +31,9 @@ dashboardRouter.get('/users', requireAuth, requirePermission('roles:manage'), as
       u.created_at createdAt,
       GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ',') roles,
       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ',') permissions,
-      GROUP_CONCAT(DISTINCT direct_p.name ORDER BY direct_p.name SEPARATOR ',') directPermissions
+      GROUP_CONCAT(DISTINCT direct_p.name ORDER BY direct_p.name SEPARATOR ',') directPermissions,
+      (SELECT GROUP_CONCAT(s.state ORDER BY s.state SEPARATOR '|') FROM staff_state_access s WHERE s.user_id=u.id) states,
+      (SELECT GROUP_CONCAT(a.event_id) FROM staff_event_access a WHERE a.user_id=u.id) eventIds
       FROM users u
       LEFT JOIN user_roles ur ON ur.user_id=u.id
       LEFT JOIN roles r ON r.id=ur.role_id
@@ -42,6 +49,8 @@ dashboardRouter.get('/users', requireAuth, requirePermission('roles:manage'), as
         roles: user.roles ? String(user.roles).split(',') : [],
         permissions: user.permissions ? String(user.permissions).split(',') : [],
         directPermissions: user.directPermissions ? String(user.directPermissions).split(',') : [],
+        states: user.states ? String(user.states).split('|') : [],
+        eventIds: user.eventIds ? String(user.eventIds).split(',') : [],
       })),
       roles: [...dashboardRoles],
       permissions: permissions.map((permission: { name: string }) => permission.name),
@@ -51,7 +60,7 @@ dashboardRouter.get('/users', requireAuth, requirePermission('roles:manage'), as
   }
 })
 
-dashboardRouter.put('/users/:userId/roles', requireAuth, requirePermission('roles:manage'), async (req: AuthRequest, res, next) => {
+dashboardRouter.put('/users/:userId/roles', requireAuth, requirePermission('roles:manage'), adminWriteLimit, async (req: AuthRequest, res, next) => {
   try {
     const input = z.object({
       roles: z.array(z.enum(dashboardRoleList as [typeof dashboardRoleList[number], ...typeof dashboardRoleList[number][]])).min(1).max(dashboardRoles.size),
@@ -115,6 +124,88 @@ dashboardRouter.put('/users/:userId/roles', requireAuth, requirePermission('role
     })
     if (result.status !== 200) return res.status(result.status).json({ error: result.error })
     res.json({ userId: req.params.userId, roles: result.roles, directPermissions: result.directPermissions })
+  } catch (error) {
+    next(error)
+  }
+})
+
+dashboardRouter.get('/staff-events', requireAuth, requirePermission('roles:manage'), async (_req, res, next) => {
+  try {
+    const [events] = await pool.query<any[]>(`SELECT id,title,city,state,starts_at startsAt FROM events
+      WHERE status IN ('APPROVED','PUBLISHED') AND ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ORDER BY starts_at LIMIT 200`)
+    res.json({ events })
+  } catch (error) {
+    next(error)
+  }
+})
+
+const staffAssignment = z.object({
+  states: z.array(z.string().trim().min(2).max(80)).max(40).default([]),
+  eventIds: z.array(z.string().uuid()).max(200).default([]),
+})
+
+async function saveStaffAssignment(
+  connection: { query: (sql: string, values?: unknown[]) => Promise<any> },
+  userId: string, actorId: string, input: z.infer<typeof staffAssignment>,
+) {
+  const states = [...new Map(input.states.map((state) => [state.toLowerCase(), state])).values()]
+  const eventIds = [...new Set(input.eventIds)]
+  await connection.query('DELETE FROM staff_state_access WHERE user_id=?', [userId])
+  await connection.query('DELETE FROM staff_event_access WHERE user_id=?', [userId])
+  for (const state of states) {
+    await connection.query('INSERT INTO staff_state_access(user_id,state,assigned_by) VALUES (?,?,?)', [userId, state, actorId])
+  }
+  for (const eventId of eventIds) {
+    await connection.query('INSERT INTO staff_event_access(user_id,event_id,assigned_by) VALUES (?,?,?)', [userId, eventId, actorId])
+  }
+  await connection.query(
+    'INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)',
+    [actorId, 'dashboard.staff_assignment.updated', 'user', userId, JSON.stringify({ states, eventIds })],
+  )
+  return { states, eventIds }
+}
+
+dashboardRouter.put('/users/:userId/states', requireAuth, requirePermission('roles:manage'), adminWriteLimit, async (req: AuthRequest, res, next) => {
+  try {
+    const input = staffAssignment.parse(req.body)
+    const result = await withTransaction(async (connection) => {
+      const [targetRows] = await connection.query<any[]>('SELECT id FROM users WHERE id=? FOR UPDATE', [req.params.userId])
+      if (!targetRows.length) return null
+      return saveStaffAssignment(connection, String(req.params.userId), req.user!.id, input)
+    })
+    if (!result) return res.status(404).json({ error: 'User not found' })
+    res.json({ userId: req.params.userId, ...result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Admin creates a registration-staff account already scoped to specific states/events.
+dashboardRouter.post('/staff', requireAuth, requirePermission('roles:manage'), adminWriteLimit, async (req: AuthRequest, res, next) => {
+  try {
+    const input = staffAssignment.extend({
+      fullName: z.string().trim().min(2).max(160),
+      email: z.string().trim().toLowerCase().email().max(255),
+      password: z.string().min(12).max(128),
+    }).parse(req.body)
+    if (!input.states.length && !input.eventIds.length) {
+      return res.status(400).json({ error: 'Assign at least one state or event to this staff member' })
+    }
+    const userId = crypto.randomUUID()
+    const passwordHash = await bcrypt.hash(input.password, 12)
+    const result = await withTransaction(async (connection) => {
+      const [taken] = await connection.query<any[]>('SELECT id FROM users WHERE email=?', [input.email])
+      if (taken.length) return null
+      const [roleRows] = await connection.query<any[]>("SELECT id FROM roles WHERE name='REGISTRATION_MANAGER'")
+      if (!roleRows.length) throw new Error('Dashboard role is not configured: REGISTRATION_MANAGER')
+      await connection.query(
+        "INSERT INTO users(id,email,password_hash,full_name,status,email_verified_at) VALUES (?,?,?,?,'ACTIVE',NOW())",
+        [userId, input.email, passwordHash, input.fullName])
+      await connection.query('INSERT INTO user_roles(user_id,role_id) VALUES (?,?)', [userId, roleRows[0].id])
+      return saveStaffAssignment(connection, userId, req.user!.id, input)
+    })
+    if (!result) return res.status(409).json({ error: 'An account already uses this email address' })
+    res.status(201).json({ userId, email: input.email, ...result })
   } catch (error) {
     next(error)
   }
@@ -487,8 +578,16 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
     }
 
     if (role === 'REGISTRATION_MANAGER') {
+      // Non-admin staff only see events assigned to them (directly or by state).
+      const unrestricted = req.user!.roles.some((name) => name === 'ADMIN' || name === 'SUPER_ADMIN')
+      const [assigned] = unrestricted ? [[]] : await pool.query<any[]>(`SELECT e.id FROM events e
+        WHERE e.id IN (SELECT event_id FROM staff_event_access WHERE user_id=?)
+          OR LOWER(e.state) IN (SELECT LOWER(state) FROM staff_state_access WHERE user_id=?)`, [req.user!.id, req.user!.id])
+      const scopeIds = assigned.length ? assigned.map((row: any) => row.id) : ['']
+      const sc = unrestricted ? '' : 'AND e.id IN (?)'
+      const sp = unrestricted ? [] : [scopeIds]
       const [eventsResult, registrationsResult, checkInsResult, metricResult, dailyResult] = await Promise.all([
-        pool.query<any[]>(`SELECT e.id,e.title,e.city,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+        pool.query<any[]>(`SELECT e.id,e.title,e.city,e.state,e.venue,e.starts_at startsAt,e.ends_at endsAt,
           IF(NOW() BETWEEN e.starts_at AND e.ends_at,'Live',IF(e.starts_at>NOW(),'Upcoming','Recently ended')) status,
           COUNT(DISTINCT CASE WHEN r.status='REGISTERED' THEN r.id END) registrations,
           COUNT(DISTINCT CASE WHEN r.status='REGISTERED' AND c.id IS NOT NULL THEN r.id END) checkedIn
@@ -496,8 +595,8 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
           LEFT JOIN event_registrations r ON r.event_id=e.id
           LEFT JOIN qr_passes q ON q.registration_id=r.id AND q.revoked_at IS NULL
           LEFT JOIN check_ins c ON c.pass_id=q.id
-          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
-          GROUP BY e.id ORDER BY e.starts_at LIMIT 20`),
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}
+          GROUP BY e.id ORDER BY e.starts_at LIMIT 20`, sp),
         pool.query<any[]>(`SELECT r.id registrationId,v.full_name title,v.email,
           e.id eventId,e.title eventTitle,IF(c.id IS NULL,'Registered','Checked in') status,
           r.created_at createdAt,c.checked_in_at checkedInAt
@@ -506,38 +605,39 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
           LEFT JOIN qr_passes q ON q.registration_id=r.id AND q.revoked_at IS NULL
           LEFT JOIN check_ins c ON c.pass_id=q.id
           WHERE r.status='REGISTERED' AND e.status IN ('APPROVED','PUBLISHED')
-            AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
-          ORDER BY r.created_at DESC LIMIT 8`),
+            AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}
+          ORDER BY r.created_at DESC LIMIT 8`, sp),
         pool.query<any[]>(`SELECT c.id,v.full_name title,v.email,e.id eventId,e.title eventTitle,
           'Checked in' status,c.checked_in_at createdAt
           FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
           JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
           JOIN visitor_profiles v ON v.id=r.visitor_id JOIN events e ON e.id=r.event_id
-          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
-          ORDER BY c.checked_in_at DESC LIMIT 8`),
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}
+          ORDER BY c.checked_in_at DESC LIMIT 8`, sp),
         pool.query<any[]>(`SELECT
           (SELECT COUNT(*) FROM event_registrations r JOIN events e ON e.id=r.event_id
             WHERE r.status='REGISTERED' AND e.status IN ('APPROVED','PUBLISHED')
-              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) registrations,
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}) registrations,
           (SELECT COUNT(*) FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
             JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
             JOIN events e ON e.id=r.event_id WHERE e.status IN ('APPROVED','PUBLISHED')
-              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) checkedIn,
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}) checkedIn,
           (SELECT COUNT(*) FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
             JOIN events e ON e.id=r.event_id WHERE q.revoked_at IS NULL
-              AND e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) activePasses,
-          (SELECT COUNT(*) FROM events WHERE status IN ('APPROVED','PUBLISHED')
-            AND ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)) activeEvents,
+              AND e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}) activePasses,
+          (SELECT COUNT(*) FROM events e WHERE e.status IN ('APPROVED','PUBLISHED')
+            AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) ${sc}) activeEvents,
           (SELECT COUNT(*) FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
             JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
             JOIN events e ON e.id=r.event_id WHERE e.status IN ('APPROVED','PUBLISHED')
-              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) AND c.checked_in_at>=CURRENT_DATE()) todayEntries`),
+              AND e.ends_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) AND c.checked_in_at>=CURRENT_DATE() ${sc}) todayEntries`,
+        [...sp, ...sp, ...sp, ...sp, ...sp]),
         pool.query<any[]>(`SELECT DATE_FORMAT(c.checked_in_at,'%Y-%m-%d') day,COUNT(*) total
           FROM check_ins c JOIN qr_passes q ON q.id=c.pass_id AND q.revoked_at IS NULL
           JOIN event_registrations r ON r.id=q.registration_id AND r.status='REGISTERED'
           JOIN events e ON e.id=r.event_id
-          WHERE e.status IN ('APPROVED','PUBLISHED') AND c.checked_in_at>=DATE_SUB(CURRENT_DATE(),INTERVAL 6 DAY)
-          GROUP BY DATE_FORMAT(c.checked_in_at,'%Y-%m-%d') ORDER BY day`),
+          WHERE e.status IN ('APPROVED','PUBLISHED') AND c.checked_in_at>=DATE_SUB(CURRENT_DATE(),INTERVAL 6 DAY) ${sc}
+          GROUP BY DATE_FORMAT(c.checked_in_at,'%Y-%m-%d') ORDER BY day`, sp),
       ])
       const rows = metricResult[0][0] ?? {}
       const events = eventsResult[0]
@@ -622,7 +722,7 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
       profileId
         ? pool.query<any[]>(`SELECT r.id registrationId,e.id eventId,e.title,e.city,e.venue,
             e.starts_at startsAt,e.ends_at endsAt,e.description,r.created_at createdAt,
-            q.id passId,q.revoked_at revokedAt,c.checked_in_at checkedInAt,
+            q.id passId,q.reference_code referenceCode,q.revoked_at revokedAt,c.checked_in_at checkedInAt,
             (SELECT em.id FROM event_media em WHERE em.event_id=e.id AND em.media_type='IMAGE' AND em.data IS NOT NULL ORDER BY em.sort_order,em.id LIMIT 1) mediaId
             FROM event_registrations r JOIN events e ON e.id=r.event_id
             LEFT JOIN qr_passes q ON q.registration_id=r.id
@@ -643,16 +743,12 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
       pool.query<any[]>(`SELECT COUNT(*) total FROM blog_posts WHERE status='APPROVED'`),
       pool.query<any[]>(`SELECT COUNT(*) total FROM artists`),
     ])
-    const qrPassSecret = process.env.JWT_SECRET
-    if (!qrPassSecret || qrPassSecret.length < 32) {
-      throw new Error('JWT_SECRET must be configured with at least 32 characters')
-    }
     const visitorRegistrations = registrations[0].map((item: any) => ({
       ...item,
-      status: item.revokedAt ? 'Revoked' : item.checkedInAt ? 'Checked in' : item.passId ? 'Pass active' : 'Registered',
+      status: item.revokedAt ? 'Revoked' : item.checkedInAt ? 'Used' : item.passId ? 'Pass active' : 'Registered',
       mediaUrl: item.mediaId ? `/api/events/${item.eventId}/media/${item.mediaId}` : null,
-      qrData: item.passId && !item.revokedAt && !item.checkedInAt
-        ? passTokenForId(item.passId, qrPassSecret)
+      qrData: item.passId && item.referenceCode && !item.revokedAt && !item.checkedInAt
+        ? referenceQrValue(item.referenceCode)
         : null,
     }))
     const visitorEvents = upcoming[0].map((item: any) => ({

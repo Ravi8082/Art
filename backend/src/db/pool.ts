@@ -13,8 +13,12 @@ export const pool = mysql.createPool({
   user: process.env.MYSQL_USER,
   password: process.env.MYSQL_PASSWORD,
   waitForConnections: true,
-  connectionLimit: 10,
-  multipleStatements: true,
+  connectionLimit: Math.max(5, Number(process.env.DB_POOL_SIZE ?? 30)),
+  queueLimit: Number(process.env.DB_QUEUE_LIMIT ?? 2000),
+  connectTimeout: 10_000,
+  enableKeepAlive: true,
+  // Only the migration runner needs multi-statement SQL; keep it off for request handling.
+  multipleStatements: process.argv.some((arg) => arg.includes('migrate')),
 })
 
 export async function withTransaction<T>(work: (connection: mysql.PoolConnection) => Promise<T>) {

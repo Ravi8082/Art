@@ -110,6 +110,8 @@ export function EventUploader() {
           title: form.get('title'),
           description: form.get('description'),
           venue: form.get('venue'),
+          city: form.get('city'),
+          state: form.get('state'),
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
         }),
@@ -180,7 +182,9 @@ export function EventUploader() {
               <div className="dashboard-event-fields">
                 <label className="dashboard-event-wide">Event title<input name="title" required minLength={2} maxLength={255} placeholder="e.g. Mumbai Art Expo 2026" /></label>
                 <label className="dashboard-event-wide">Description<textarea name="description" required minLength={10} rows={4} placeholder="Describe the exhibition, its artists and what visitors can expect." /></label>
-                <label>Venue / city<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="venue" required minLength={2} maxLength={255} placeholder="Venue, city" /></span></label>
+                <label>Venue<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="venue" required minLength={2} maxLength={255} placeholder="Venue name" /></span></label>
+                <label>City<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="city" required maxLength={120} placeholder="e.g. Mumbai" /></span></label>
+                <label>State<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="state" required minLength={2} maxLength={80} placeholder="e.g. Maharashtra" /></span></label>
                 <div className="event-dates dashboard-event-dates">
                   <label>Starts at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="startsAt" type="datetime-local" required /></span></label>
                   <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required /></span></label>

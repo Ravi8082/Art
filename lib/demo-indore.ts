@@ -1,7 +1,7 @@
 // The banner and gallery remain demo content until they are connected to managed event media.
 // Free-pass registration uses the published Indore exhibition and verifies the visitor by email OTP.
 
-export const INDORE_DEMO_NOTE = 'Exhibition photos and some page details are demo content. Free entry pass registration is active and requires email verification; event updates and reminders are not available yet.'
+export const INDORE_DEMO_NOTE = 'Exhibition photos are demo content. Event name, dates, venue and timing come from the admin dashboard; free entry pass registration requires email verification.'
 
 export const indoreEvent = {
   eyebrow: 'The Haat of Art',

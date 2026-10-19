@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { hashPassToken, passIdFromToken, passTokenForId, tokenFromScannedValue } from './pass-token.js'
+import { hashPassToken, newReferenceCode, passIdFromToken, passTokenForId, referenceFromScannedValue, referenceQrValue, tokenFromScannedValue } from './pass-token.js'
+
+test('reference codes are opaque, random and parse back from the QR value', () => {
+  const reference = newReferenceCode()
+  assert.match(reference, /^[A-HJ-NP-Z2-9]{12}$/)
+  assert.notEqual(newReferenceCode(), reference)
+  assert.equal(referenceFromScannedValue(referenceQrValue(reference)), reference)
+  assert.equal(referenceFromScannedValue(reference.toLowerCase()), reference)
+  assert.equal(referenceFromScannedValue('short'), null)
+  assert.equal(referenceFromScannedValue(passTokenForId(passId, secret)), null)
+})
 
 const passId = 'a71d5f5a-5a24-4d74-82be-1bfa14c382f7'
 const secret = 'test-secret-with-at-least-32-characters'

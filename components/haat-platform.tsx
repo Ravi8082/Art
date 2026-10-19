@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
-import { visitorPassUrl } from '@/lib/visitor-pass-url'
-import {
+import { 
   Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown,
   CircleAlert, ClipboardList, FileCheck2, GalleryVerticalEnd, Heart, Image, LayoutDashboard,
   LogOut, Mail, MapPin, Menu, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, Users, Wallet, X,
@@ -739,9 +738,8 @@ function VisitorPassPreview({ pass, fullName }: { pass: VisitorRegistration; ful
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    const publicPassUrl = visitorPassUrl(pass.qrData ?? '', window.location.origin)
     setError('')
-    void QRCode.toDataURL(publicPassUrl, { errorCorrectionLevel: 'M', margin: 1, width: 160 })
+    void QRCode.toDataURL(pass.qrData ?? '', { errorCorrectionLevel: 'M', margin: 1, width: 160 })
       .then((image) => { if (active) setQrImage(image) })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Could not generate your pass QR code.')
@@ -778,7 +776,7 @@ function EventStaffOverview({
     && (!query || `${entry.title} ${entry.email} ${entry.eventTitle}`.toLowerCase().includes(query)))
   const registrations = (overview?.registrations ?? []).filter((entry) =>
     (!selectedEvent || entry.eventId === selectedEvent.id)
-    && entry.status !== 'Checked in'
+    && entry.status !== 'Checked in' && entry.status !== 'Used'
     && (!query || `${entry.title} ${entry.email} ${entry.eventTitle}`.toLowerCase().includes(query)))
   const daily = overview?.dailyCheckIns ?? []
   const maxDaily = Math.max(1, ...daily.map((item) => Number(item.total)))

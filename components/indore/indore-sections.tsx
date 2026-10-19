@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, Hand, MapPin, Palette, Sparkles, Store, UserRound, Users } from 'lucide-react'
 import { SafeImage } from '@/components/home/safe-image'
 import { indoreCollage, indoreFaces, indoreFloor, indoreInfo, indoreInside, indoreWhy } from '@/lib/demo-indore'
+import type { IndoreView } from '@/lib/indore-live'
 
 const whyIcons = { artists: Palette, live: Sparkles, workshop: Hand, craft: Store, meet: UserRound, space: Users }
 
@@ -57,8 +58,8 @@ export function InsideHall() {
   )
 }
 
-export function VenueCard() {
-  const v = indoreInfo.venue
+export function VenueCard({ view }: { view?: IndoreView } = {}) {
+  const v = (view?.info ?? indoreInfo).venue
   return (
     <div className="in-card in-venue">
       <SafeImage src={v.image} alt="Venue building (demo image)" />
