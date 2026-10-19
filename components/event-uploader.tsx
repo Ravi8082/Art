@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { useEffect, type FormEvent } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, Check, Clock3, ExternalLink, ImagePlus, MapPin, ShieldCheck, UploadCloud } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Check, Clock3, ExternalLink, ImagePlus, MapPin, ShieldCheck, Store, UploadCloud } from 'lucide-react'
+import { indianStates, indianUnionTerritories } from '@/lib/indian-states'
+import { citiesByState } from '@/lib/indian-cities'
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const allowedTypes = new Set([
@@ -24,8 +26,24 @@ async function responseError(response: Response) {
   return `Request failed (${response.status})`
 }
 
+type StallType = { id: string; code: string; name: string; category: string; widthM: string; depthM: string; price: string; taxRate: string; includes: string }
+const rupees = (value: string | number) => `₹${Number(value).toLocaleString('en-IN')}`
+
 export function EventUploader() {
   const [files, setFiles] = useState<File[]>([])
+  const [states, setStates] = useState<string[]>([])
+  const [cities, setCities] = useState<string[]>([])
+  const [customCity, setCustomCity] = useState('')
+  const [stallTypes, setStallTypes] = useState<StallType[]>([])
+  const [slots, setSlots] = useState<Record<string, number>>({})
+  const cityOptions = states.flatMap((state) => citiesByState[state] ?? []).filter((city, index, all) => all.indexOf(city) === index && !cities.includes(city))
+  const totalSlots = Object.values(slots).reduce((sum, count) => sum + count, 0)
+  const potential = stallTypes.reduce((sum, type) => sum + (slots[type.id] ?? 0) * Number(type.price), 0)
+  const addCustomCity = () => {
+    const value = customCity.trim()
+    if (value && !cities.some((city) => city.toLowerCase() === value.toLowerCase())) setCities((current) => [...current, value])
+    setCustomCity('')
+  }
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -51,6 +69,14 @@ export function EventUploader() {
       })
     return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    if (authStatus !== 'signed-in') return
+    fetch(`${apiBaseUrl}/api/bookings/stall-types`, { credentials: 'include' })
+      .then((response) => response.ok ? response.json() as Promise<StallType[]> : [])
+      .then(setStallTypes)
+      .catch(() => setStallTypes([]))
+  }, [authStatus])
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -92,6 +118,10 @@ export function EventUploader() {
     }
 
     const form = new FormData(formElement)
+    if (!states.length || !cities.length) {
+      setError('Kam se kam ek state aur ek city select karein.')
+      return
+    }
     const startsAt = new Date(String(form.get('startsAt')))
     const endsAt = new Date(String(form.get('endsAt')))
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
@@ -110,10 +140,11 @@ export function EventUploader() {
           title: form.get('title'),
           description: form.get('description'),
           venue: form.get('venue'),
-          city: form.get('city'),
-          state: form.get('state'),
+          city: cities.join(', '),
+          state: states.join(', '),
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
+          stalls: stallTypes.map((type) => ({ stallTypeId: type.id, count: slots[type.id] ?? 0 })).filter((item) => item.count > 0),
         }),
       })
       if (!response.ok) throw new Error(await responseError(response))
@@ -129,16 +160,19 @@ export function EventUploader() {
           credentials: 'include',
           headers: {
             'Content-Type': file.type,
-            'X-Alt-Text': `${String(form.get('title'))}: ${file.name}`.slice(0, 255),
+            'X-Alt-Text': encodeURIComponent(`${String(form.get('title'))}: ${file.name}`.slice(0, 255)),
           },
           body: file,
         })
         if (!upload.ok) throw new Error(`${file.name}: ${await responseError(upload)}`)
       }
 
-      setMessage(`Event ${eventId} aur ${files.length} media file(s) save hue. Approval ke baad homepage par dikh sakte hain.`)
+      setMessage(`Event ${eventId}, ${totalSlots} stall slot(s) aur ${files.length} media file(s) save hue. Approval ke baad homepage par dikh sakte hain.`)
       formElement.reset()
       setFiles([])
+      setStates([])
+      setCities([])
+      setSlots({})
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : 'Unknown error'
       setError(eventId
@@ -183,8 +217,26 @@ export function EventUploader() {
                 <label className="dashboard-event-wide">Event title<input name="title" required minLength={2} maxLength={255} placeholder="e.g. Mumbai Art Expo 2026" /></label>
                 <label className="dashboard-event-wide">Description<textarea name="description" required minLength={10} rows={4} placeholder="Describe the exhibition, its artists and what visitors can expect." /></label>
                 <label>Venue<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="venue" required minLength={2} maxLength={255} placeholder="Venue name" /></span></label>
-                <label>City<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="city" required maxLength={120} placeholder="e.g. Mumbai" /></span></label>
-                <label>State<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="state" required minLength={2} maxLength={80} placeholder="e.g. Maharashtra" /></span></label>
+                <div className="dashboard-event-wide event-places">
+                  <span className="event-places-label">States *</span>
+                  <select value="" onChange={(change) => { const value = change.target.value; if (value) setStates((current) => current.includes(value) ? current : [...current, value]) }}>
+                    <option value="">{states.length ? 'Add another state…' : 'Select a state…'}</option>
+                    {[...indianStates, ...indianUnionTerritories].filter((state) => !states.includes(state)).map((state) => <option key={state}>{state}</option>)}
+                  </select>
+                  {states.length > 0 && <div className="event-chips">{states.map((state) => <button type="button" key={state} onClick={() => { setStates((current) => current.filter((item) => item !== state)); setCities((current) => current.filter((city) => !(citiesByState[state] ?? []).includes(city) || states.some((other) => other !== state && (citiesByState[other] ?? []).includes(city)))) }} aria-label={`Remove ${state}`}>{state} ×</button>)}</div>}
+                </div>
+                <div className="dashboard-event-wide event-places">
+                  <span className="event-places-label">Cities *</span>
+                  <select value="" disabled={!states.length} onChange={(change) => { const value = change.target.value; if (value) setCities((current) => [...current, value]) }}>
+                    <option value="">{states.length ? 'Select a city…' : 'Select a state first'}</option>
+                    {cityOptions.map((city) => <option key={city}>{city}</option>)}
+                  </select>
+                  <span className="event-city-custom">
+                    <input value={customCity} disabled={!states.length} onChange={(change) => setCustomCity(change.target.value)} onKeyDown={(key) => { if (key.key === 'Enter') { key.preventDefault(); addCustomCity() } }} maxLength={80} placeholder="Other city? Type and press Add" />
+                    <button type="button" disabled={!customCity.trim()} onClick={addCustomCity}>Add</button>
+                  </span>
+                  {cities.length > 0 && <div className="event-chips">{cities.map((city) => <button type="button" key={city} onClick={() => setCities((current) => current.filter((item) => item !== city))} aria-label={`Remove ${city}`}>{city} ×</button>)}</div>}
+                </div>
                 <div className="event-dates dashboard-event-dates">
                   <label>Starts at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="startsAt" type="datetime-local" required /></span></label>
                   <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required /></span></label>
@@ -193,7 +245,23 @@ export function EventUploader() {
             </section>
 
             <section className="dashboard-event-form-section">
-              <div className="dashboard-event-section-heading"><span className="is-blue"><ImagePlus size={18} /></span><div><p className="eyebrow">02 · Event gallery</p><h2>Add images and videos</h2><p>Choose files that represent the venue, artworks or exhibition experience.</p></div></div>
+              <div className="dashboard-event-section-heading"><span className="is-blue"><Store size={18} /></span><div><p className="eyebrow">02 · Stall slots &amp; pricing</p><h2>How many stalls are available?</h2><p>Set the number of slots for each stall type. Prices are the same ones artists see on the Book a Stall page.</p></div></div>
+              {stallTypes.length === 0 ? <p className="event-stalls-empty">No stall types found. Add them from the Stalls dashboard first.</p> : (
+                <div className="event-stalls">
+                  {stallTypes.map((type) => (
+                    <label key={type.id} className="event-stall-row">
+                      <span><strong>{type.name}</strong><small>{type.widthM}×{type.depthM} m · {type.category.toLowerCase()}{type.includes ? ` · ${type.includes}` : ''}</small></span>
+                      <em>{rupees(type.price)}<small>+ {Number(type.taxRate)}% GST</small></em>
+                      <input type="number" min={0} max={500} inputMode="numeric" aria-label={`Slots for ${type.name}`} value={slots[type.id] ?? 0} onChange={(change) => setSlots((current) => ({ ...current, [type.id]: Math.max(0, Math.min(500, Number(change.target.value) || 0)) }))} />
+                    </label>
+                  ))}
+                  <p className="event-stalls-total"><b>{totalSlots}</b> slots available · potential stall revenue <b>{rupees(potential)}</b> (before GST)</p>
+                </div>
+              )}
+            </section>
+
+            <section className="dashboard-event-form-section">
+              <div className="dashboard-event-section-heading"><span className="is-blue"><ImagePlus size={18} /></span><div><p className="eyebrow">03 · Event gallery</p><h2>Add images and videos</h2><p>Choose files that represent the venue, artworks or exhibition experience.</p></div></div>
               <label className="dashboard-event-upload">
                 <UploadCloud size={24} />
                 <strong>Choose event images or videos</strong>

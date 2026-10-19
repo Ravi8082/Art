@@ -4,10 +4,9 @@ import { HighlightSection } from '@/components/highlights/highlight-section'
 import { BookStallCTA } from '@/components/highlights/book-stall-cta'
 import { getShell } from '@/lib/api'
 import { demoHighlights } from '@/lib/demo-highlights'
-import { DEMO_LABEL } from '@/lib/demo-home-content'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Highlights · The Haat of Art' }
+export const metadata = { title: 'Art Fest Highlights – Photos & Moments | The Haat of Art', description: 'Relive the best moments from The Haat of Art art fests and exhibitions: artists, visitors, live art and workshops.', alternates: { canonical: '/highlights' } }
 
 export default async function HighlightsPage() {
   const { shell } = await getShell()
@@ -20,7 +19,6 @@ export default async function HighlightsPage() {
         {items.map((item) => <HighlightSection key={item.id} item={item} />)}
       </section>
       <BookStallCTA />
-      <p className="th-demo-note">{DEMO_LABEL}</p>
     </PublicShell>
   )
 }

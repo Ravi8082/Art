@@ -1,11 +1,10 @@
 import { PublicShell } from '@/components/public-shell'
 import { getPublishedAbout, getShell, apiBaseUrl } from '@/lib/api'
 import { aboutHero, aboutSections, aboutTeam, aboutPartners } from '@/lib/demo-about'
-import { ABOUT_DEMO_NOTE } from '@/lib/demo-about'
 import type { AboutSection } from '@/lib/api'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'About · The Haat of Art' }
+export const metadata = { title: 'About The Haat of Art – The Art Fest Platform for India', description: 'The Haat of Art Foundation and Exhobuzz Pvt Ltd organise art fests and exhibitions that connect emerging artists, craftspeople and art lovers across India.', alternates: { canonical: '/about' } }
 
 function mediaUrl(path: string | null) {
   return path ? `${apiBaseUrl}${path}` : null
@@ -132,7 +131,6 @@ export default async function AboutPage() {
           <a href="/exhibit-with-us">Book Your Stall →</a>
         </section>
 
-        {!published && <p className="th-demo-note">{ABOUT_DEMO_NOTE}</p>}
       </div>
     </PublicShell>
   )

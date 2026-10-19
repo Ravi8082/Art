@@ -155,9 +155,9 @@ export function PaymentStage({ application, exhibition, mediaBase, onChanged }: 
               <div className="bw-hold">
                 <p className="bw-hold-ref">Booking <strong>{booking.bookingRef}</strong></p>
                 <p className={`bw-count ${remaining < 120 ? 'is-urgent' : ''}`}>
-                  <ClockIcon /> Stall held for {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                  <ClockIcon /> Stall held for {Math.floor(remaining / 3600)}h {String(Math.floor(remaining / 60) % 60).padStart(2, '0')}m
                 </p>
-                <p className="bw-hint">Complete the payment before the hold ends, otherwise the stall returns to the floor plan.</p>
+                <p className="bw-hint">Our team has been notified of your booking and will contact you on your phone and email to collect the payment. You can also pay below. If the hold ends without payment, the stall returns to the floor plan.</p>
               </div>
               <h4>Select Payment Method</h4>
               <div className="bw-methods">

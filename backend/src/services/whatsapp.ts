@@ -46,6 +46,22 @@ export async function sendWhatsApp(phone: string | null | undefined, text: strin
   }
 }
 
+// Sends one message to every consenting visitor phone, a few at a time, without blocking the caller.
+export async function broadcastWhatsAppToConsentedVisitors(text: string) {
+  if (!whatsappConfigured()) return { queued: 0 }
+  const { pool } = await import('../db/pool.js')
+  const [rows] = await pool.query<any[]>(
+    `SELECT DISTINCT phone FROM visitor_profiles WHERE marketing_consent=1 AND phone<>''`)
+  const phones = [...new Set(rows.map((row) => normalizeWhatsAppNumber(row.phone)).filter(Boolean) as string[])]
+  void (async () => {
+    for (let i = 0; i < phones.length; i += 5) {
+      await Promise.all(phones.slice(i, i + 5).map((phone) => sendWhatsApp(phone, text)))
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  })()
+  return { queued: phones.length }
+}
+
 // Looks up a phone number for an email from visitor profiles or exhibitor applications.
 export async function sendWhatsAppToEmail(email: string, text: string, options: { requireConsent?: boolean } = {}) {
   if (!whatsappConfigured()) return { sent: false, reason: 'WhatsApp not configured' }

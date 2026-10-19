@@ -85,6 +85,9 @@ interface BookingRow {
   firstName: string
   lastName: string
   email: string
+  phone?: string | null
+  stallType?: string | null
+  holdExpiresAt?: string | null
   eventTitle: string
   stallCode: string
   paymentId: string | null
@@ -982,9 +985,16 @@ export function AdminBookingsManager() {
                     <td>
                       <span className="abm-strong">{[row.firstName, row.lastName].filter(Boolean).join(' ') || row.applicationRef}</span>
                       <small>{text(row.email)}</small>
+                      {text(row.phone) && (
+                        <small className="abm-contact">
+                          <a className="abm-link" href={`tel:${row.phone}`}>{row.phone}</a>
+                          {' · '}
+                          <a className="abm-link" href={`https://wa.me/${String(row.phone).replace(/\D/g, '')}`} target="_blank" rel="noreferrer">WhatsApp</a>
+                        </small>
+                      )}
                     </td>
                     <td>{text(row.eventTitle) || '—'}</td>
-                    <td>{text(row.stallCode) || '—'}</td>
+                    <td>{text(row.stallCode) || '—'}{text(row.stallType) && <small>{row.stallType}</small>}</td>
                     <td className="abm-amount">{money(row.totalAmount)}</td>
                     <td><Pill status={badge.status} label={badge.label} /></td>
                     <td className="abm-actions">

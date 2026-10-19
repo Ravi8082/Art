@@ -1,9 +1,9 @@
 import Link from 'next/link'
 import { SafeImage } from '@/components/home/safe-image'
-import { ARTIST_DEMO_NOTE, adminNav, adminRows, artistBenefits, artistNav, artworks, dashStats, plans, profileStats, profileTabs, stepNames } from '@/lib/demo-artist'
+import { adminNav, adminRows, artistBenefits, artistNav, artworks, dashStats, plans, profileStats, profileTabs, stepNames } from '@/lib/demo-artist'
 
 const Logo = () => <Link href="/" className="ar-logo"><img src="/media/logo.png" alt="The Haat of Art" /></Link>
-export const DemoNote = () => <p className="th-demo-note">{ARTIST_DEMO_NOTE}</p>
+export const DemoNote = () => null
 const pill = (s: string) => s.toLowerCase().includes('pend') ? 'is-pend' : s.toLowerCase().includes('rej') ? 'is-rej' : 'is-ok'
 
 export function ArtistHero() {
@@ -94,13 +94,13 @@ export function ProfileSetup() {
   )
 }
 
-export function PanelShell({ variant, active, title, sub, action, children }: { variant: 'artist' | 'admin'; active: string; title: string; sub?: string; action?: React.ReactNode; children: React.ReactNode }) {
+export function PanelShell({ variant, active, title, sub, action, userName, children }: { userName?: string; variant: 'artist' | 'admin'; active: string; title: string; sub?: string; action?: React.ReactNode; children: React.ReactNode }) {
   const nav: ReadonlyArray<readonly [string, string]> = variant === 'artist' ? artistNav : adminNav.map((n) => [n, '/admin-demo/artworks'] as const)
   return (
     <div className={`ar-panel is-${variant}`}>
       <aside className="ar-side">
         <Logo />
-        <div className="ar-user"><SafeImage src="/demo/artist1.jpg" alt="" /><span><b>Priya Sharma</b><small>{variant === 'artist' ? 'Artist' : 'Super Admin'}</small></span></div>
+        <div className="ar-user"><SafeImage src="/demo/artist1.jpg" alt="" /><span><b>{userName || 'Priya Sharma'}</b><small>{variant === 'artist' ? 'Artist' : 'Super Admin'}</small></span></div>
         <nav>{nav.map(([n, href]) => <Link key={n} href={href} className={n === active ? 'is-active' : ''}>{n}</Link>)}</nav>
       </aside>
       <section className="ar-main">
@@ -123,9 +123,9 @@ export function ArtistDashboard() {
   )
 }
 
-export function AddArtwork() {
+export function AddArtwork({ userName }: { userName?: string } = {}) {
   return (
-    <PanelShell variant="artist" active="Add New Artwork" title="Add New Artwork" sub="Share your creativity with the world. (Free slots used: 2/2)">
+    <PanelShell userName={userName} variant="artist" active="Add New Artwork" title="Add New Artwork" sub="Share your creativity with the world. (Free slots used: 2/2)">
       <form className="ar-form ar-art-form" action="/artist/dashboard">
         <div className="ar-field"><span>Artwork Images <small>(JPG, PNG, WebP; max 5MB each)</small></span>
           <div className="ar-uploads"><div className="ar-drop">⬆<b>Click to upload images</b><small>or drag and drop</small></div>{['art-lotus', 'art-dusk', 'art-tree'].map((s) => <SafeImage key={s} src={`/demo/${s}.jpg`} alt="Upload preview (demo)" />)}<div className="ar-drop is-add">+</div></div></div>
@@ -163,13 +163,15 @@ export function PlansPage() {
   )
 }
 
-export function ArtistProfile() {
+export function ArtistProfile({ name, email, roles }: { name?: string; email?: string; roles?: string[] } = {}) {
+  const displayName = name?.trim() || 'Priya Sharma'
+  const isReal = Boolean(name)
   return (
     <>
       <section className="ap-cover"><SafeImage src="/demo/hl-wall.jpg" alt="Cover artwork (demo image)" /></section>
       <section className="ap-head">
-        <SafeImage src="/demo/artist1.jpg" alt="Priya Sharma (demo)" className="ap-photo" />
-        <div className="ap-info"><h1>Priya Sharma <em>✔ Verified Artist</em></h1><p className="ap-loc">📍 Mumbai, Maharashtra</p><p>I am a contemporary artist inspired by Indian culture, nature and modern expression. My work explores the beauty of everyday life through colors, textures and mixed media.</p></div>
+        <SafeImage src="/demo/artist1.jpg" alt={displayName} className="ap-photo" />
+        <div className="ap-info">{isReal ? <><h1>{displayName}</h1><p className="ap-loc">{email}</p><p>{(roles ?? []).map((r) => r.replace(/_/g, ' ')).join(', ') || 'Artist'} · The Haat of Art</p></> : <><h1>Priya Sharma <em>✔ Verified Artist</em></h1><p className="ap-loc">📍 Mumbai, Maharashtra</p><p>I am a contemporary artist inspired by Indian culture, nature and modern expression. My work explores the beauty of everyday life through colors, textures and mixed media.</p></>}</div>
         <Link className="th-btn" href="/contact">Contact Artist</Link>
       </section>
       <section className="ap-stats">{profileStats.map(([n, l]) => <div key={l}><b>{n}</b><small>{l}</small></div>)}</section>

@@ -37,13 +37,17 @@ export function resolveIndoreView(event: LiveEvent | null) {
   const days = Math.max(1, Math.round((Date.parse(dayKey(end).split('/').reverse().join('-')) - Date.parse(dayKey(start).split('/').reverse().join('-'))) / 86_400_000) + 1)
   const dates = formatEventDates(event.startsAt, event.endsAt)
   const timing = `${time(start)} - ${time(end)}`
-  const where = withoutRepeats(event.venue, [event.city, event.state])
-  const mapQuery = encodeURIComponent(withoutRepeats(event.venue, [event.city]))
+  const cities = splitPlaces(event.city)
+  const single = cities.length <= 1
+  const city = single ? (cities[0] ?? '') : ''
+  const state = single ? event.state : ''
+  const where = withoutRepeats(event.venue, [city, state])
+  const mapQuery = encodeURIComponent(withoutRepeats(event.venue, [city]))
   return {
     slug: event.slug,
     event: {
       ...indoreEvent,
-      title: event.city ? `Comes to ${event.city}` : event.title,
+      title: single ? (city ? `Comes to ${city}` : event.title) : `Tours ${cities.length} Cities`,
       accent: days <= 7 ? `${dayWords[days - 1]} ${days === 1 ? 'Day' : 'Days'}, Free.` : 'Free Entry.',
       text: event.description || indoreEvent.text,
       startsAt: event.startsAt,
@@ -56,7 +60,7 @@ export function resolveIndoreView(event: LiveEvent | null) {
       venue: {
         ...indoreInfo.venue,
         name: event.venue,
-        address: withoutRepeats('', [event.city, event.state]).replace(/^, /, ''),
+        address: single ? withoutRepeats('', [city, state]).replace(/^, /, '') : cities.join(', '),
         cta: { ...indoreInfo.venue.cta, href: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
       },
       details: { ...indoreInfo.details, dates, timing },
@@ -65,3 +69,9 @@ export function resolveIndoreView(event: LiveEvent | null) {
 }
 
 export type IndoreView = ReturnType<typeof resolveIndoreView>
+
+// Event state/city fields can list several places ("Pan India — Mumbai, Delhi and Pune").
+export const splitPlaces = (value: string) => value
+  .split(/[,;/]|\band\b/i)
+  .map((part) => part.replace(/^(pan india|multiple states)\s*[—-]\s*/i, '').trim())
+  .filter(Boolean)

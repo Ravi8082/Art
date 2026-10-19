@@ -2,10 +2,10 @@ import { PublicShell } from '@/components/public-shell'
 import { ContactForm } from '@/components/contact-form'
 import { ContactIntro } from '@/components/contact-intro'
 import { apiBaseUrl, getHomepageMedia, getShell } from '@/lib/api'
-import { CONTACT_DEMO_NOTE, contactDetails, contactHero, contactNotice, contactPartners } from '@/lib/demo-contact'
+import { contactDetails, contactHero, contactNotice, contactPartners } from '@/lib/demo-contact'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Contact · The Haat of Art' }
+export const metadata = { title: 'Contact The Haat of Art – Stalls, Collaborations & Enquiries', description: 'Contact The Haat of Art for stall bookings, artist collaborations, sponsorship and partnership enquiries.', alternates: { canonical: '/contact' } }
 
 export default async function ContactPage() {
   const [{ content, shell }, media] = await Promise.all([getShell(), getHomepageMedia()])
@@ -89,7 +89,6 @@ export default async function ContactPage() {
           </section>
         )}
 
-        {isDemo && <p className="th-demo-note">{CONTACT_DEMO_NOTE}</p>}
       </div>
     </PublicShell>
   )

@@ -152,7 +152,7 @@ contentRouter.delete('/artworks/:id', ...manage, async (req: AuthRequest, res, n
 
 contentRouter.get('/blog', async (_req, res, next) => {
   try {
-    const [rows] = await pool.query<any[]>("SELECT id, title, excerpt, author, cover_mime IS NOT NULL hasCover, published_at publishedAt FROM blog_posts WHERE status='APPROVED' ORDER BY published_at DESC, id")
+    const [rows] = await pool.query<any[]>("SELECT id, title, excerpt, author, cover_mime IS NOT NULL hasCover, (SELECT m.id FROM blog_media m WHERE m.post_id = blog_posts.id AND m.media_type='IMAGE' ORDER BY m.created_at LIMIT 1) firstImageId, published_at publishedAt FROM blog_posts WHERE status='APPROVED' ORDER BY published_at DESC, id")
     res.json({ posts: rows.map(blogSummary) })
   } catch (error) { next(error) }
 })
@@ -167,15 +167,58 @@ contentRouter.get('/blog/admin', ...blogPublish, async (req, res, next) => {
        ORDER BY CASE WHEN status='PENDING' THEN 0 ELSE 1 END, submitted_at DESC`,
       status === 'ALL' ? [] : [status],
     )
-    res.json({ posts: rows })
+    const media = await blogMediaFor(rows.map((row) => row.id), true)
+    res.json({ posts: rows.map((row) => ({ ...row, media: media.get(row.id) ?? [] })) })
   } catch (error) { next(error) }
+})
+
+const blogMediaUrl = (id: string) => `/api/content/blog/media/${id}`
+
+async function blogMediaFor(postIds: string[], adminView: boolean) {
+  if (postIds.length === 0) return new Map<string, { id: string; mediaType: string; url: string }[]>()
+  const [rows] = await pool.query<any[]>('SELECT id, post_id postId, media_type mediaType FROM blog_media WHERE post_id IN (?) ORDER BY created_at', [postIds])
+  const byPost = new Map<string, { id: string; mediaType: string; url: string }[]>()
+  for (const row of rows) {
+    const list = byPost.get(row.postId) ?? []
+    list.push({ id: row.id, mediaType: row.mediaType, url: adminView ? `/api/content/blog/admin/media/${row.id}` : blogMediaUrl(row.id) })
+    byPost.set(row.postId, list)
+  }
+  return byPost
+}
+
+async function sendBlogMedia(req: AuthRequest, res: any, mediaId: string, onlyApproved: boolean) {
+  const [rows] = await pool.query<any[]>(
+    `SELECT m.mime_type mime, m.data FROM blog_media m JOIN blog_posts p ON p.id = m.post_id WHERE m.id=? ${onlyApproved ? "AND p.status='APPROVED'" : ''}`, [mediaId])
+  if (!rows[0]) return res.status(404).json({ error: 'Media not found' })
+  const data: Buffer = rows[0].data
+  res.set('Content-Type', rows[0].mime)
+  res.set('Accept-Ranges', 'bytes')
+  res.set('Cache-Control', onlyApproved ? 'public, max-age=300' : 'private, no-store')
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.get('range') ?? '')
+  if (range && (range[1] || range[2])) {
+    const start = range[1] ? Number(range[1]) : Math.max(0, data.length - Number(range[2]))
+    const end = range[1] && range[2] ? Math.min(Number(range[2]), data.length - 1) : data.length - 1
+    if (start > end || start >= data.length) { res.set('Content-Range', `bytes */${data.length}`); return res.status(416).end() }
+    res.status(206).set('Content-Range', `bytes ${start}-${end}/${data.length}`).set('Content-Length', String(end - start + 1))
+    return res.end(data.subarray(start, end + 1))
+  }
+  res.send(data)
+}
+
+contentRouter.get('/blog/media/:mediaId', async (req: AuthRequest, res, next) => {
+  try { await sendBlogMedia(req, res, String(req.params.mediaId), true) } catch (error) { next(error) }
+})
+
+contentRouter.get('/blog/admin/media/:mediaId', ...blogPublish, async (req: AuthRequest, res, next) => {
+  try { await sendBlogMedia(req, res, String(req.params.mediaId), false) } catch (error) { next(error) }
 })
 
 contentRouter.get('/blog/:id', async (req, res, next) => {
   try {
-    const [rows] = await pool.query<any[]>("SELECT id, title, excerpt, body, author, cover_mime IS NOT NULL hasCover, published_at publishedAt FROM blog_posts WHERE id=? AND status='APPROVED'", [req.params.id])
+    const [rows] = await pool.query<any[]>("SELECT id, title, excerpt, body, author, cover_mime IS NOT NULL hasCover, (SELECT m.id FROM blog_media m WHERE m.post_id = blog_posts.id AND m.media_type='IMAGE' ORDER BY m.created_at LIMIT 1) firstImageId, published_at publishedAt FROM blog_posts WHERE id=? AND status='APPROVED'", [req.params.id])
     if (!rows[0]) return res.status(404).json({ error: 'Post not found' })
-    res.json({ ...blogSummary(rows[0]), body: rows[0].body })
+    const media = (await blogMediaFor([rows[0].id], false)).get(rows[0].id) ?? []
+    res.json({ ...blogSummary(rows[0]), body: rows[0].body, media })
   } catch (error) { next(error) }
 })
 
@@ -199,11 +242,40 @@ contentRouter.post('/blog/submissions', blogSubmissionLimit, async (req, res, ne
       email: z.string().trim().toLowerCase().email().max(255),
     }).strict().parse(req.body)
     const id = crypto.randomUUID()
+    const uploadToken = crypto.randomBytes(24).toString('hex')
     await pool.query(
-      "INSERT INTO blog_posts(id,title,excerpt,body,author,submitter_email,status) VALUES (?,?,?,?,?,?,'PENDING')",
-      [id, input.title, input.excerpt, input.body, input.author, input.email],
+      "INSERT INTO blog_posts(id,title,excerpt,body,author,submitter_email,upload_token_hash,status) VALUES (?,?,?,?,?,?,?,'PENDING')",
+      [id, input.title, input.excerpt, input.body, input.author, input.email, crypto.createHash('sha256').update(uploadToken).digest('hex')],
     )
-    res.status(201).json({ id, status: 'PENDING' })
+    res.status(201).json({ id, status: 'PENDING', uploadToken })
+  } catch (error) { next(error) }
+})
+
+const MAX_BLOG_MEDIA = 6
+const MAX_BLOG_IMAGE_BYTES = 8 * 1024 * 1024
+const MAX_BLOG_VIDEO_BYTES = 40 * 1024 * 1024
+const blogMediaTypes = [...supportedMediaTypes.keys()]
+const blogMediaBody = raw({ type: blogMediaTypes, limit: '41mb' })
+const blogMediaLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false })
+
+contentRouter.post('/blog/submissions/:id/media', blogMediaLimit, blogMediaBody, async (req, res, next) => {
+  try {
+    const token = req.get('x-upload-token') ?? ''
+    const contentType = req.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+    const kind = supportedMediaTypes.get(contentType)
+    if (!kind) return res.status(415).json({ error: 'Only JPG, PNG, WebP, GIF, MP4, WebM or MOV files are allowed' })
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'File is required' })
+    if (!hasValidMediaSignature(contentType, req.body)) return res.status(415).json({ error: 'File content does not match its media type' })
+    if (req.body.length > (kind === 'IMAGE' ? MAX_BLOG_IMAGE_BYTES : MAX_BLOG_VIDEO_BYTES)) return res.status(413).json({ error: kind === 'IMAGE' ? 'Images can be up to 8 MB' : 'Videos can be up to 40 MB' })
+    const [posts] = await pool.query<any[]>("SELECT upload_token_hash hash FROM blog_posts WHERE id=? AND status='PENDING'", [req.params.id])
+    const expected = posts[0]?.hash as string | undefined
+    const actual = crypto.createHash('sha256').update(token).digest('hex')
+    if (!expected || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(actual))) return res.status(403).json({ error: 'Upload not allowed for this submission' })
+    const [[count]] = await pool.query<any[]>('SELECT COUNT(*) n FROM blog_media WHERE post_id=?', [req.params.id])
+    if (count.n >= MAX_BLOG_MEDIA) return res.status(409).json({ error: `You can attach up to ${MAX_BLOG_MEDIA} files` })
+    const id = crypto.randomUUID()
+    await pool.query('INSERT INTO blog_media(id,post_id,media_type,mime_type,byte_size,data) VALUES (?,?,?,?,?,?)', [id, req.params.id, kind, contentType, req.body.length, req.body])
+    res.status(201).json({ id, mediaType: kind })
   } catch (error) { next(error) }
 })
 
@@ -290,7 +362,7 @@ contentRouter.delete('/blog/:id', ...blogPublish, async (req: AuthRequest, res, 
 })
 
 function blogSummary(row: any) {
-  return { id: row.id, title: row.title, excerpt: row.excerpt, author: row.author, publishedAt: row.publishedAt, coverUrl: row.hasCover ? `/api/content/blog/${row.id}/cover` : null }
+  return { id: row.id, title: row.title, excerpt: row.excerpt, author: row.author, publishedAt: row.publishedAt, coverUrl: row.hasCover ? `/api/content/blog/${row.id}/cover` : row.firstImageId ? `/api/content/blog/media/${row.firstImageId}` : null }
 }
 
 const contactLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false })

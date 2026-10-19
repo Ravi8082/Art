@@ -28,6 +28,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ id: s
         <h1>{post.title}</h1>
         {post.coverUrl && <img src={`${apiBaseUrl}${post.coverUrl}`} alt="" />}
         <div className="prose">{post.body.split(/\n+/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
+        {post.media && post.media.some((item) => item.url !== post.coverUrl) && (
+          <div className="blog-media">
+            {post.media.filter((item) => item.url !== post.coverUrl).map((item) => item.mediaType === 'VIDEO'
+              ? <video key={item.id} src={`${apiBaseUrl}${item.url}`} controls preload="metadata" playsInline />
+              : <img key={item.id} src={`${apiBaseUrl}${item.url}`} alt={post.title} loading="lazy" />)}
+          </div>
+        )}
         <Link className="underlined-link" href="/blog">All posts <ArrowUpRight size={14} /></Link>
       </article>
     </PublicShell>

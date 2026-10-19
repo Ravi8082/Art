@@ -6,6 +6,7 @@ import { requireAuth, requirePermission, type AuthRequest } from '../middleware/
 import { supportedMediaTypes } from '../services/media-validation.js'
 import { recordAudit } from '../services/audit.js'
 import { storeAsset } from './about.js'
+import { getGoogleReviews } from '../services/google-reviews.js'
 
 export const guestsRouter = Router()
 
@@ -47,7 +48,8 @@ guestsRouter.get('/', async (_req, res, next) => {
   try {
     const [guests] = await pool.query<any[]>(`${guestSelect} WHERE g.active = 1 ORDER BY g.sort_order, g.name`)
     const [feedback] = await pool.query<any[]>(`${feedbackSelect(false)} WHERE f.active = 1 ORDER BY f.sort_order, f.id`)
-    res.json({ guests: guests.map(guestRow), feedback: feedback.map(feedbackRow) })
+    const google = await getGoogleReviews()
+    res.json({ guests: guests.map(guestRow), feedback: [...feedback.map(feedbackRow), ...google] })
   } catch (error) { next(error) }
 })
 

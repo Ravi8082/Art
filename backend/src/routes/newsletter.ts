@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { queueEmail, secureToken, hashToken } from '../services/mailer.js'
-import { enqueueSubscribers, enqueueConsentedVisitors } from '../services/outbox.js'
+import { enqueueSubscribers, enqueueConsentedVisitors, enqueueArtists } from '../services/outbox.js'
+import { broadcastWhatsAppToConsentedVisitors } from '../services/whatsapp.js'
 
 export const newsletterRouter = Router()
 
@@ -22,7 +23,7 @@ async function createUnsubscribeToken(subscriberId: string) {
 
 newsletterRouter.post('/subscribe', subscribeLimit, async (req, res, next) => {
   try {
-    const input = z.object({ email: z.string().trim().toLowerCase().email().max(255) }).strict().parse(req.body)
+    const input = z.object({ email: z.string().trim().toLowerCase().email().max(255), state: z.string().trim().min(2).max(80).optional() }).strict().parse(req.body)
     const id = crypto.randomUUID()
     await pool.query(
       `INSERT INTO newsletter_subscribers(id,email)
@@ -32,6 +33,7 @@ newsletterRouter.post('/subscribe', subscribeLimit, async (req, res, next) => {
          unsubscribed_at=NULL`,
       [id, input.email],
     )
+    if (input.state) await pool.query('INSERT IGNORE INTO state_interest(email,state) VALUES (?,?)', [input.email, input.state])
     const [subscribers] = await pool.query<any[]>('SELECT id FROM newsletter_subscribers WHERE email=?', [input.email])
     const token = await createUnsubscribeToken(subscribers[0].id)
     const unsubscribeUrl = publicUrl(`/newsletter/unsubscribe?token=${encodeURIComponent(token)}`)
@@ -39,8 +41,10 @@ newsletterRouter.post('/subscribe', subscribeLimit, async (req, res, next) => {
     try {
       const mail = await queueEmail(
         input.email,
-        'Thanks for subscribing — The Haat of Art',
-        `Thank you for subscribing to The Haat of Art newsletter. We’ll email you when new art stories and updates are published.\n\nTo unsubscribe at any time, visit: ${unsubscribeUrl}`,
+        input.state ? `We'll tell you when The Haat of Art comes to ${input.state}` : 'Thanks for subscribing — The Haat of Art',
+        input.state
+          ? `Thank you for your interest! There is no exhibition in ${input.state} yet, but we will email you as soon as The Haat of Art is announced there.\n\nTo unsubscribe at any time, visit: ${unsubscribeUrl}`
+          : `Thank you for subscribing to The Haat of Art newsletter. We’ll email you when new art stories and updates are published.\n\nTo unsubscribe at any time, visit: ${unsubscribeUrl}`,
       )
       mailState = mail.delivered ? 'sent' : mail.reason === 'SMTP not configured' ? 'not_configured' : 'failed'
     } catch (error) {
@@ -113,5 +117,17 @@ export async function announceEvent(eventId: string, { force = false } = {}) {
   const subscribers = await enqueueSubscribers(subject, body)
   const visitors = await enqueueConsentedVisitors(subject,
     `${body}\n\nYou receive this because you agreed to updates when registering. Reply to this email to opt out.`)
-  return { queued: subscribers + visitors }
+  const artists = await enqueueArtists(subject, [
+    `Upcoming exhibition: ${event.title}`,
+    `When: ${when}`,
+    `Where: ${place}`,
+    event.description,
+    `Apply for an exhibition stall: ${publicUrl('/book-your-stall')}`,
+    'You receive this because you are a registered artist on The Haat of Art. Reply to this email to opt out.',
+  ].join('\n\n'))
+  const whatsapp = await broadcastWhatsAppToConsentedVisitors(
+    `Upcoming exhibition: ${event.title}. When: ${when}. Where: ${place}. Register for your free entry pass: ${registerUrl}`)
+  const summary = { subscribers, visitors, artists, whatsapp: whatsapp.queued }
+  await pool.query('UPDATE events SET announce_summary=? WHERE id=?', [JSON.stringify(summary), eventId])
+  return { queued: subscribers + visitors + artists, ...summary }
 }

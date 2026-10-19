@@ -5,7 +5,9 @@ import Link from 'next/link'
 import QRCode from 'qrcode'
 import { ArrowRight, CalendarDays, CheckCircle2, Clock, MapPin, QrCode, Users } from 'lucide-react'
 import { indoreEvent, indoreForm, indoreInfo } from '@/lib/demo-indore'
-import type { IndoreView } from '@/lib/indore-live'
+import { indianStates, indianUnionTerritories } from '@/lib/indian-states'
+import { formatEventDates, splitPlaces, type IndoreView } from '@/lib/indore-live'
+import { PICK_EVENT, type UpcomingEvent } from '@/components/indore/upcoming-exhibitions'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
@@ -48,11 +50,31 @@ export function IndoreHero({ view }: { view?: IndoreView } = {}) {
   )
 }
 
-export function PassForm({ eventSlug }: { eventSlug?: string } = {}) {
-  const passBase = eventSlug ? `events/${encodeURIComponent(eventSlug)}` : 'indore'
+export function PassForm({ eventSlug, events }: { eventSlug?: string; events?: UpcomingEvent[] } = {}) {
+  const byState = Boolean(events)
+  const [stateName, setStateName] = useState('')
+  const [pickedSlug, setPickedSlug] = useState('')
+  const matches = (events ?? []).filter((event) => splitPlaces(event.state).some((s) => s.toLowerCase() === stateName.toLowerCase()))
+  const activeSlug = byState ? (matches.find((event) => event.slug === pickedSlug) ?? matches[0])?.slug : eventSlug
+  const activeEvent = matches.find((event) => event.slug === activeSlug)
+  const passBase = activeSlug ? `events/${encodeURIComponent(activeSlug)}` : 'indore'
   const f = indoreForm
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [notify, setNotify] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!byState) return
+    const onPick = (event: Event) => {
+      const { slug, state } = (event as CustomEvent<{ slug: string; state: string }>).detail
+      setStateName(state)
+      setPickedSlug(slug)
+      setNotify(null)
+      setError('')
+    }
+    window.addEventListener(PICK_EVENT, onPick)
+    return () => window.removeEventListener(PICK_EVENT, onPick)
+  }, [byState])
   const [otpEmail, setOtpEmail] = useState('')
   const [pass, setPass] = useState<{ passId: string; qrData: string; eventTitle: string; emailSent: boolean; message: string } | null>(null)
   const [qrImage, setQrImage] = useState('')
@@ -82,6 +104,7 @@ export function PassForm({ eventSlug }: { eventSlug?: string } = {}) {
           email: String(form.get('email') ?? '').trim().toLowerCase(),
           phone: String(form.get('phone') ?? '').trim(),
           city: String(form.get('city') ?? ''),
+          state: stateName || undefined,
           attendingAs: String(form.get('as') ?? ''),
           marketingConsent: form.get('consent') === 'on',
         }),
@@ -130,10 +153,61 @@ export function PassForm({ eventSlug }: { eventSlug?: string } = {}) {
       setBusy(false)
     }
   }
+  async function notifyMe(ev: FormEvent<HTMLFormElement>) {
+    ev.preventDefault()
+    const form = ev.currentTarget
+    setBusy(true)
+    setNotify(null)
+    try {
+      const response = await fetch(`${apiBase}/api/newsletter/subscribe`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: String(new FormData(form).get('email') ?? '').trim(), state: stateName }),
+      })
+      if (!response.ok) throw new Error(response.status === 429 ? 'Too many attempts. Please try again later.' : 'Please enter a valid email address.')
+      setNotify({ ok: true, text: `Thank you! We will email you as soon as The Haat of Art is announced in ${stateName}.` })
+      form.reset()
+    } catch (cause) {
+      setNotify({ ok: false, text: cause instanceof Error ? cause.message : 'Could not save your email right now.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="in-form" id="register">
       <h2>{f.title} <em>{f.accent}</em></h2>
-      {pass ? (
+      {byState && !pass && !otpEmail && (
+        <div className="in-state-pick">
+          <label>Your state *
+            <select required value={stateName} onChange={(change) => { setStateName(change.target.value); setPickedSlug(''); setNotify(null); setError('') }}>
+              <option value="" disabled>Select your state</option>
+              {[...indianStates, ...indianUnionTerritories].map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </label>
+          {stateName && matches.length > 0 && (
+            <div className="in-state-found" role="status">
+              <b>Great news! An exhibition is coming to {stateName}.</b>
+              {matches.length > 1
+                ? <label>Choose exhibition<select value={activeSlug} onChange={(change) => setPickedSlug(change.target.value)}>{matches.map((event) => <option key={event.slug} value={event.slug}>{event.title} · {formatEventDates(event.startsAt, event.endsAt)}</option>)}</select></label>
+                : <span>{matches[0].title} · {formatEventDates(matches[0].startsAt, matches[0].endsAt)}</span>}
+              {activeEvent && splitPlaces(activeEvent.city).length > 0 && <small>Cities: {splitPlaces(activeEvent.city).join(', ')}</small>}
+            </div>
+          )}
+          {stateName && matches.length === 0 && (
+            <div className="in-state-sorry" role="status">
+              <b>Sorry, there is no exhibition in {stateName} right now.</b>
+              <p>If The Haat of Art comes to {stateName} in future, we will inform you. Leave your email and we will subscribe you for updates.</p>
+              <form onSubmit={notifyMe}>
+                <input required name="email" type="email" maxLength={255} placeholder="Enter your email address" aria-label="Email address" autoComplete="email" />
+                <button className="in-submit" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Notify me'} <ArrowRight size={15} /></button>
+              </form>
+              {notify && <small className={notify.ok ? 'in-ok' : 'in-msg'} role={notify.ok ? 'status' : 'alert'}>{notify.text}</small>}
+            </div>
+          )}
+        </div>
+      )}
+      {byState && !pass && !otpEmail && !activeSlug ? null : pass ? (
         <div className="in-pass-confirmation" role="status">
           <CheckCircle2 size={30} />
           <h3>Your free entry pass is ready</h3>
@@ -162,7 +236,7 @@ export function PassForm({ eventSlug }: { eventSlug?: string } = {}) {
             <label>Full Name *<input required name="name" minLength={2} maxLength={160} placeholder="Enter your full name" autoComplete="name" /></label>
             <label>Email Address *<input required type="email" name="email" maxLength={255} placeholder="Enter your email" autoComplete="email" /></label>
             <label>Mobile Number *<input required type="tel" name="phone" placeholder="Enter your mobile number" autoComplete="tel" pattern="[0-9+ ]{10,14}" /></label>
-            <label>City *{eventSlug
+            <label>City *{activeSlug
               ? <input required name="city" maxLength={120} placeholder="Enter your city" autoComplete="address-level2" />
               : <select required name="city" defaultValue=""><option value="" disabled>Select city</option>{f.cities.map((c) => <option key={c}>{c}</option>)}</select>}</label>
             <label className="in-wide">Are you attending as? *<select required name="as" defaultValue=""><option value="" disabled>Select option</option>{f.attendingAs.map((c) => <option key={c}>{c}</option>)}</select></label>

@@ -7,7 +7,7 @@ import { demoHero } from '@/lib/demo-home-content'
 
 export const dynamic = 'force-dynamic'
 export const metadata = {
-  title: 'Book Your Stall · The Haat of Art',
+  title: 'Book Your Stall at an Art Fest | The Haat of Art',
   description: 'Apply for a stall at The Haat of Art exhibitions — choose your exhibition, pick a stall from the live floor plan and pay securely.',
 }
 

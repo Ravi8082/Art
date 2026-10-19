@@ -5,10 +5,13 @@ import { useMemo, useState } from 'react'
 import { SafeImage } from '@/components/home/safe-image'
 import { demoArtists, demoGallery, galleryCategories } from '@/lib/demo-artist'
 
-export type UploadedWork = { id: string; title: string; artistName: string; description: string; url: string }
+export type UploadedWork = {
+  id: string; title: string; artistName: string; description: string; url: string
+  artistId?: string; avatarUrl?: string | null; medium?: string; size?: string; year?: number | null; city?: string; price?: number | null
+}
 type Item = {
   id: string; title: string; artist: string; category: string; medium: string; size: string; year: string
-  city: string; price: number | null; views: string; likes: number; about: string; image: string; demo: boolean; avatar: string
+  city: string; price: number | null; views: string; likes: number; about: string; image: string; demo: boolean; avatar: string; artistId?: string
 }
 
 const meta: Record<string, { price: number; views: string; likes: number; size: string; year: string; city: string; about: string }> = {
@@ -45,11 +48,13 @@ export function GalleryGrid({ uploaded }: { uploaded: UploadedWork[] }) {
   const [thumb, setThumb] = useState(0)
 
   const all: Item[] = useMemo(() => [
-    ...uploaded.map((w): Item => ({ id: w.id, title: w.title, artist: w.artistName || 'THOA Gallery', category: 'Gallery uploads', medium: 'Artwork', size: '—', year: '—', city: '—', price: null, views: '—', likes: 0, about: w.description || 'Uploaded by the gallery team.', image: w.url, demo: false, avatar: demoArtists[0].image })),
+    ...uploaded.map((w): Item => w.artistId
+      ? { id: w.id, title: w.title, artist: w.artistName, category: 'Artist uploads', medium: w.medium || 'Artwork', size: w.size || '—', year: w.year ? String(w.year) : '—', city: w.city || '—', price: w.price ?? null, views: '—', likes: 0, about: w.description || `Artwork by ${w.artistName}.`, image: w.url, demo: false, avatar: w.avatarUrl || w.url, artistId: w.artistId }
+      : { id: w.id, title: w.title, artist: w.artistName || 'THOA Gallery', category: 'Gallery uploads', medium: 'Artwork', size: '—', year: '—', city: '—', price: null, views: '—', likes: 0, about: w.description || 'Uploaded by the gallery team.', image: w.url, demo: false, avatar: demoArtists[0].image }),
     ...demoGallery.map((w): Item => ({ id: w.id, title: w.title, artist: w.artist, category: w.category, medium: w.medium, ...meta[w.id], views: meta[w.id].views, image: w.image, demo: true, avatar: avatarFor(w.artist) })),
   ], [uploaded])
 
-  const cats = uploaded.length ? ['All', 'Gallery uploads', ...galleryCategories.slice(1)] : [...galleryCategories]
+  const cats = uploaded.length ? ['All', ...(uploaded.some((w) => w.artistId) ? ['Artist uploads'] : []), ...(uploaded.some((w) => !w.artistId) ? ['Gallery uploads'] : []), ...galleryCategories.slice(1)] : [...galleryCategories]
   const mediums = ['All Mediums', ...Array.from(new Set(all.map((i) => i.medium)))]
   const cities = ['All Locations', ...Array.from(new Set(all.map((i) => i.city).filter((c) => c !== '—')))]
 
@@ -128,12 +133,11 @@ export function GalleryGrid({ uploaded }: { uploaded: UploadedWork[] }) {
           <div className="gx-thumbs">{thumbs.map((t, n) => <button key={t.id} className={n === thumb ? 'is-active' : ''} onClick={() => setThumb(n)} aria-label={`Image ${n + 1}`}><SafeImage src={t.image} alt="" /></button>)}</div>
           <h3>{active.title}</h3>
           <div className="gx-price"><strong>{inr(active.price)}</strong><span>👁 {active.views} Views</span><span>♡ {active.likes + (liked[active.id] ? 1 : 0)} likes</span></div>
-          <div className="gx-artist"><img src={active.avatar} alt="" /><div><b>{active.artist} <i>✔</i></b><small>{active.city !== '—' ? `${active.city}, India` : 'The Haat of Art'}</small></div><Link href="/artist/profile">View Artist</Link></div>
+          <div className="gx-artist"><img src={active.avatar} alt="" /><div><b>{active.artist} <i>✔</i></b><small>{active.city !== '—' ? `${active.city}, India` : 'The Haat of Art'}</small></div><Link href={active.artistId ? `/artists/u/${active.artistId}` : '/artist/profile'}>View Artist</Link></div>
           <dl className="gx-dl">
             <dt>Medium</dt><dd>{active.medium}</dd><dt>Size</dt><dd>{active.size}</dd><dt>Year</dt><dd>{active.year}</dd><dt>Category</dt><dd>{active.category}</dd><dt>Location</dt><dd>{active.city}</dd>
           </dl>
           <h4>About this Artwork</h4><p>{active.about}</p>
-          {active.demo && <small className="gx-demo">Demo artwork — sample placeholder, not for sale.</small>}
           <div className="gx-share"><span>Share Artwork</span>{['W', 'f', 'X', 'P', 'in', '🔗'].map((s) => <button key={s} type="button" aria-label={`Share ${s}`}>{s}</button>)}</div>
           <div className="gx-cta">
             <button type="button" onClick={() => setLiked({ ...liked, [active.id]: !liked[active.id] })}>{liked[active.id] ? '♥ Added' : '♡ Add to Favorites'}</button>

@@ -139,12 +139,12 @@ dashboardRouter.get('/staff-events', requireAuth, requirePermission('roles:manag
   }
 })
 
-const staffAssignment = z.object({
+export const staffAssignment = z.object({
   states: z.array(z.string().trim().min(2).max(80)).max(40).default([]),
   eventIds: z.array(z.string().uuid()).max(200).default([]),
 })
 
-async function saveStaffAssignment(
+export async function saveStaffAssignment(
   connection: { query: (sql: string, values?: unknown[]) => Promise<any> },
   userId: string, actorId: string, input: z.infer<typeof staffAssignment>,
 ) {
@@ -582,7 +582,7 @@ dashboardRouter.get('/summary', requireAuth, requirePermission('dashboard:read')
       const unrestricted = req.user!.roles.some((name) => name === 'ADMIN' || name === 'SUPER_ADMIN')
       const [assigned] = unrestricted ? [[]] : await pool.query<any[]>(`SELECT e.id FROM events e
         WHERE e.id IN (SELECT event_id FROM staff_event_access WHERE user_id=?)
-          OR LOWER(e.state) IN (SELECT LOWER(state) FROM staff_state_access WHERE user_id=?)`, [req.user!.id, req.user!.id])
+          OR EXISTS (SELECT 1 FROM staff_state_access ssa WHERE ssa.user_id=? AND FIND_IN_SET(LOWER(ssa.state), REPLACE(LOWER(e.state), ', ', ','))>0)`, [req.user!.id, req.user!.id])
       const scopeIds = assigned.length ? assigned.map((row: any) => row.id) : ['']
       const sc = unrestricted ? '' : 'AND e.id IN (?)'
       const sp = unrestricted ? [] : [scopeIds]

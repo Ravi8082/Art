@@ -199,7 +199,7 @@ export function ExhibitionCards({ exhibitions, selectedIds, onToggle, mediaBase 
               <h3>{exhibition.title}</h3>
               <p className="bw-card-dates"><CalendarIcon /> {formatEventDates(exhibition.startsAt, exhibition.endsAt)}</p>
               <p className="bw-card-venue"><PinIcon /> {exhibition.venue || exhibition.city || 'Venue to be confirmed'}</p>
-              <p className="bw-card-stalls">{exhibition.availableStalls} of {exhibition.totalStalls} stalls available</p>
+              <p className="bw-card-stalls">{exhibition.totalStalls > 0 ? `${exhibition.availableStalls} of ${exhibition.totalStalls} stalls available` : 'Stall slots will be announced soon'}</p>
               <div className="bw-card-actions">
                 <button type="button" className="bw-btn-outline" onClick={() => onToggle(exhibition.id)} disabled={!exhibition.registrationOpen} aria-pressed={selected}>
                   {selected ? 'Selected ✓' : 'Select exhibition'}

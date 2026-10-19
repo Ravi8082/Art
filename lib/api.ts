@@ -1,4 +1,5 @@
 import type { SiteContent } from './site-content'
+import { mergeSiteSettings, type SiteSettings } from './site-settings'
 
 export const apiBaseUrl = (process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
@@ -15,7 +16,8 @@ export type PublicEvent = {
 }
 
 export type BlogSummary = { id: string; title: string; excerpt: string; author: string; publishedAt: string; coverUrl: string | null }
-export type BlogPost = BlogSummary & { body: string }
+export type BlogMedia = { id: string; mediaType: 'IMAGE' | 'VIDEO'; url: string }
+export type BlogPost = BlogSummary & { body: string; media?: BlogMedia[] }
 
 export type AboutSection = { sectionKey: string; title: string; subtitle: string; bodyHtml: string | null; imageUrl: string | null; imagePosition: 'left' | 'right'; visible: number; sortOrder: number }
 export type AboutTeamMember = { id: string; name: string; designation: string; bio: string; photoUrl: string | null; facebookUrl: string | null; linkedinUrl: string | null; instagramUrl: string | null; sortOrder: number; active: number }
@@ -65,6 +67,16 @@ export async function getContent(): Promise<SiteContent> {
   }
 }
 
+export async function getExhibitInfo() {
+  return getJson<ExhibitInfo>('/api/bookings/exhibit-info')
+}
+
+export type ExhibitInfo = {
+  stallTypes: { id: string; code: string; name: string; category: 'INDIVIDUAL' | 'GROUP' | 'GALLERY'; widthM: number; depthM: number; price: number; taxRate: number; includes: string | null }[]
+  window: { startsAt: string | null; endsAt: string | null; upcoming: number }
+  stats: { events: number; stallsBooked: number; visitors: number; artists: number; openStalls: number }
+}
+
 export async function getEvents() {
   return getJson<PublicEvent[]>('/api/events')
 }
@@ -93,6 +105,11 @@ export async function getPublishedAbout(): Promise<{ state: AboutState; publishe
 
 export async function getGuests(): Promise<{ guests: PublicGuest[]; feedback: PublicGuestFeedback[] } | null> {
   return getJson<{ guests: PublicGuest[]; feedback: PublicGuestFeedback[] }>('/api/guests')
+}
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const data = await getJson<{ settings: Partial<SiteSettings> | null }>('/api/site-settings')
+  return mergeSiteSettings(data?.settings)
 }
 
 export async function getShell() {

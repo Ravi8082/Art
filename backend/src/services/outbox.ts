@@ -36,6 +36,33 @@ export async function enqueueConsentedVisitors(subject: string, body: string) {
   return Number(result.affectedRows)
 }
 
+const artistAudienceWhere = `u.status='ACTIVE' AND (
+    EXISTS (SELECT 1 FROM artist_profiles ap WHERE ap.user_id=u.id)
+    OR EXISTS (SELECT 1 FROM exhibition_applications ea WHERE ea.user_id=u.id)
+    OR EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.name='ARTIST'))
+  AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=u.email)
+  AND NOT EXISTS (SELECT 1 FROM visitor_profiles v WHERE v.email=u.email AND v.marketing_consent=1)`
+
+// Artists with an account, profile or earlier stall application; people already reached as subscribers or visitors are skipped.
+export async function enqueueArtists(subject: string, body: string) {
+  const [result] = await pool.query<any>(
+    `INSERT INTO email_outbox(id,recipient_email,subject,body)
+     SELECT UUID(),u.email,?,? FROM users u WHERE ${artistAudienceWhere}`,
+    [subject, body],
+  )
+  return Number(result.affectedRows)
+}
+
+export async function countAudience() {
+  const [[row]] = await pool.query<any[]>(
+    `SELECT
+       (SELECT COUNT(*) FROM newsletter_subscribers WHERE unsubscribed_at IS NULL) subscribers,
+       (SELECT COUNT(*) FROM visitor_profiles v WHERE v.marketing_consent=1
+          AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=v.email)) visitors,
+       (SELECT COUNT(*) FROM users u WHERE ${artistAudienceWhere}) artists`)
+  return { subscribers: Number(row.subscribers), visitors: Number(row.visitors), artists: Number(row.artists) }
+}
+
 async function claimBatch() {
   const claimToken = crypto.randomUUID()
   await pool.query(

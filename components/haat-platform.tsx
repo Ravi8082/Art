@@ -7,7 +7,7 @@ import QRCode from 'qrcode'
 import { 
   Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown,
   CircleAlert, ClipboardList, FileCheck2, GalleryVerticalEnd, Heart, Image, LayoutDashboard,
-  LogOut, Mail, MapPin, Menu, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, Users, Wallet, X,
+  LogOut, Mail, MapPin, Menu, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, UserPlus, Users, Wallet, X,
 } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
@@ -17,7 +17,7 @@ const dashboardRoles = [
 ] as const
 
 type DashboardRole = (typeof dashboardRoles)[number]
-type DashboardUser = { id: string; email: string; fullName: string; roles: string[]; permissions: string[] }
+type DashboardUser = { id: string; email: string; fullName: string; avatarUrl?: string | null; roles: string[]; permissions: string[] }
 type DashboardItem = { id?: string; title: string; detail?: string; status?: string; createdAt?: string; reference?: string; mediaUrl?: string | null; kind?: string }
 type EventStaffEvent = { id: string; title: string; city: string; venue: string; startsAt: string; endsAt: string; status: string; registrations: number; checkedIn: number }
 type VisitorEvent = { id: string; title: string; city: string; venue: string; description: string; startsAt: string; endsAt: string; mediaUrl: string | null }
@@ -119,8 +119,13 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
   SUPER_ADMIN: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, group: 'Workspace' },
     { label: 'Users & Roles', href: '/dashboard/users', icon: Users, group: 'Platform access' },
+    { label: 'Team & employees', href: '/dashboard/team', icon: UserPlus },
+    { label: 'Visitor reports', href: '/dashboard/visitors', icon: Users },
+    { label: 'My profile', href: '/dashboard/profile', icon: Settings },
     { label: 'Content management', href: '/dashboard/content', icon: BookOpen, group: 'Management' },
-    { label: 'Blog moderation', href: '/dashboard/content#blog-moderation', icon: FileCheck2 },
+    { label: 'Site design (navbar, footer, theme)', href: '/dashboard/site-design', icon: Settings },
+    { label: 'Blog approvals', href: '/dashboard/blog-approvals', icon: FileCheck2 },
+    { label: 'Artist approvals', href: '/dashboard/artist-approvals', icon: Users },
     { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays },
     { label: 'Artist applications', href: '/dashboard/bookings', icon: FileCheck2 },
     { label: 'Visitor registrations', href: '/dashboard/check-in', icon: QrCode },
@@ -142,17 +147,23 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays },
     { label: 'Artist Applications', href: '/dashboard/bookings', icon: FileCheck2 },
     { label: 'Stall Bookings', href: '/dashboard/stalls', icon: Store },
-    { label: 'Blog moderation', href: '/dashboard/content#blog-moderation', icon: BookOpen },
+    { label: 'Blog approvals', href: '/dashboard/blog-approvals', icon: BookOpen },
+    { label: 'Artist approvals', href: '/dashboard/artist-approvals', icon: Users },
     { label: 'Enquiries', href: '/dashboard/enquiries', icon: Users },
+    { label: 'Team & employees', href: '/dashboard/team', icon: UserPlus, group: 'Account' },
+    { label: 'Visitor reports', href: '/dashboard/visitors', icon: Users, group: 'Account' },
+    { label: 'My profile', href: '/dashboard/profile', icon: Settings },
   ],
   CONTENT_MANAGER: [
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Website Content', href: '/dashboard/content', icon: BookOpen, group: 'Content & design' },
+    { label: 'Site design', href: '/dashboard/site-design', icon: Settings },
     { label: 'Homepage Media', href: '/dashboard/homepage-media', icon: Image },
     { label: 'About Page', href: '/dashboard/about', icon: GalleryVerticalEnd },
     { label: 'Contact Page', href: '/dashboard/contact-page', icon: Users, group: 'Management' },
     { label: 'Guests & Feedback', href: '/dashboard/guests', icon: Users },
     { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays, group: 'Events' },
+    { label: 'My profile', href: '/dashboard/profile', icon: Settings, group: 'Account' },
   ],
   REGISTRATION_MANAGER: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -160,6 +171,7 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Visitor Registrations', href: '/dashboard/check-in', icon: Users, group: 'Entry desk' },
     { label: 'QR Scanner', href: '/dashboard/check-in', icon: QrCode },
     { label: 'Attendee Lookup', href: '/dashboard/check-in', icon: Search },
+    { label: 'My profile', href: '/dashboard/profile', icon: Settings, group: 'Account' },
   ],
   ARTIST_EXHIBITOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -172,7 +184,7 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Blogs', href: '/blog', icon: BookOpen, group: 'Discover' },
     { label: 'Gallery', href: '/gallery', icon: GalleryVerticalEnd },
     { label: 'Event Calendar', href: '/exhibitions/events', icon: CalendarDays },
-    { label: 'Settings', href: '/artist/profile', icon: Settings, group: 'Support' },
+    { label: 'Settings', href: '/dashboard/profile', icon: Settings, group: 'Support' },
     { label: 'Help & Support', href: '/contact', icon: Mail },
   ],
   VISITOR: [
@@ -184,6 +196,7 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Blogs', href: '/blog', icon: BookOpen },
     { label: 'Gallery', href: '/gallery', icon: Image },
     { label: 'Notifications & Preferences', href: '/dashboard/passes', icon: Bell, group: 'Account' },
+    { label: 'My profile', href: '/dashboard/profile', icon: Settings },
   ],
 }
 
@@ -196,7 +209,8 @@ const actions: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Manage stalls', href: '/dashboard/stalls', icon: Store, tone: 'green' },
     { label: 'Update website content', href: '/dashboard/content', icon: BookOpen, tone: 'violet' },
     { label: 'Manage users & roles', href: '/dashboard/users', icon: ShieldCheck, tone: 'violet' },
-    { label: 'Review blog submissions', href: '/dashboard/content#blog-moderation', icon: FileCheck2, tone: 'coral' },
+    { label: 'Review blog submissions', href: '/dashboard/blog-approvals', icon: FileCheck2, tone: 'coral' },
+    { label: 'Approve artist profiles', href: '/dashboard/artist-approvals', icon: Users, tone: 'blue' },
   ],
   ADMIN: [
     { label: 'View operations reports', href: '/dashboard/reports', icon: Activity, tone: 'blue' },
@@ -204,11 +218,13 @@ const actions: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Manage exhibitions', href: '/dashboard/events', icon: CalendarDays, tone: 'coral' },
     { label: 'Review applications', href: '/dashboard/bookings', icon: FileCheck2, tone: 'blue' },
     { label: 'Manage stalls', href: '/dashboard/stalls', icon: Store, tone: 'green' },
-    { label: 'Review blog submissions', href: '/dashboard/content#blog-moderation', icon: BookOpen, tone: 'coral' },
+    { label: 'Review blog submissions', href: '/dashboard/blog-approvals', icon: BookOpen, tone: 'coral' },
+    { label: 'Approve artist profiles', href: '/dashboard/artist-approvals', icon: Users, tone: 'blue' },
     { label: 'View enquiries', href: '/dashboard/enquiries', icon: Users, tone: 'violet' },
   ],
   CONTENT_MANAGER: [
     { label: 'Edit website pages', href: '/dashboard/content', icon: BookOpen, tone: 'coral' },
+    { label: 'Change navbar, footer & theme', href: '/dashboard/site-design', icon: Settings, tone: 'violet' },
     { label: 'Upload homepage media', href: '/dashboard/homepage-media', icon: Image, tone: 'blue' },
     { label: 'Update About page', href: '/dashboard/about', icon: GalleryVerticalEnd, tone: 'green' },
     { label: 'Manage exhibitions', href: '/dashboard/events', icon: CalendarDays, tone: 'violet' },
@@ -412,7 +428,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
       <header className="role-mobile-header"><Brand /><button aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button></header>
       <aside className={`role-sidebar ${menuOpen ? 'is-open' : ''}`}>
         <div className="role-brand-wrap"><Brand /><span className="role-safe"><ShieldCheck size={13} /> Secure portal</span></div>
-        <div className="role-user-card"><span className="role-avatar">{initials}</span><span><strong>{user.fullName}</strong><small>{info.label}</small><small className="role-user-email">{user.email}</small></span></div>
+        <div className="role-user-card"><span className="role-avatar">{user.avatarUrl ? <img src={`${apiBase}${user.avatarUrl}`} alt="" className="role-avatar-img" /> : initials}</span><span><strong>{user.fullName}</strong><small>{info.label}</small><small className="role-user-email">{user.email}</small></span></div>
         <nav aria-label="Dashboard navigation">
           {role !== 'SUPER_ADMIN' && <p className="role-nav-label">Workspace</p>}
           {activeNav.map(({ label, href, icon: Icon, group }) => (
@@ -446,7 +462,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
                 </select><ChevronDown size={14} />
               </label>
             )}
-            <Link href={role === 'SUPER_ADMIN' ? '/dashboard/system' : '/dashboard'} className="role-top-avatar" aria-label={`Open ${info.label} profile and settings`}>{initials}</Link>
+            <Link href="/dashboard/profile" className="role-top-avatar" aria-label="Edit your profile and photo">{user.avatarUrl ? <img src={`${apiBase}${user.avatarUrl}`} alt="" className="role-avatar-img" /> : initials}</Link>
           </div>
         </header>
         <div className="role-content">
@@ -482,7 +498,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
             </div>
             <div className="role-panel role-actions-panel">
               <div className="role-panel-heading"><div><p className="role-eyebrow">Shortcuts</p><h2>Quick actions</h2></div><ArrowRight size={17} /></div>
-              <div className="role-action-list">{actions[role].map(({ label, href, icon: Icon, tone }) => <Link key={label} href={href} className={`role-action ${tone}`}><Icon size={17} /><span>{label}</span><ArrowRight size={14} /></Link>)}</div>
+              <div className="role-action-list">{actions[role as DashboardRole].map(({ label, href, icon: Icon, tone }) => <Link key={label} href={href} className={`role-action ${tone}`}><Icon size={17} /><span>{label}</span><ArrowRight size={14} /></Link>)}</div>
             </div>
             {filteredSections.slice(1).map((section) => (
               <div className="role-panel" key={section.title}>
@@ -894,7 +910,7 @@ function ContentManagerOverview({
     { label: 'Edit Website Pages', href: '/dashboard/content', icon: BookOpen, tone: 'coral' },
     { label: 'Upload Banner', href: '/dashboard/homepage-media', icon: Image, tone: 'blue' },
     { label: 'Manage Artists', href: '/dashboard/content', icon: Users, tone: 'green' },
-    { label: 'Create Blog Post', href: '/dashboard/content#blog-moderation', icon: FileCheck2, tone: 'violet' },
+    { label: 'Create Blog Post', href: '/dashboard/blog-approvals', icon: FileCheck2, tone: 'violet' },
     { label: 'Manage Partners', href: '/dashboard/about', icon: GalleryVerticalEnd, tone: 'amber' },
     { label: 'Update Contact Info', href: '/dashboard/contact-page', icon: Mail, tone: 'blue' },
     { label: 'Manage Exhibitions', href: '/dashboard/events', icon: CalendarDays, tone: 'coral' },
@@ -1021,7 +1037,7 @@ function AdminDashboardOverview({
     { label: 'Review Applications', href: '/dashboard/bookings', icon: Users, tone: 'amber' },
     { label: 'Visitor Registrations', href: '/dashboard/check-in', icon: QrCode, tone: 'blue' },
     { label: 'View Enquiries', href: '/dashboard/enquiries', icon: Mail, tone: 'violet' },
-    { label: 'Review Blogs', href: '/dashboard/content#blog-moderation', icon: BookOpen, tone: 'red' },
+    { label: 'Review Blogs', href: '/dashboard/blog-approvals', icon: BookOpen, tone: 'red' },
     { label: 'Content Management', href: '/dashboard/content', icon: FileCheck2, tone: 'cyan' },
     { label: 'Reports & Analytics', href: '/dashboard/reports', icon: BarChart3, tone: 'green' },
   ]
@@ -1182,7 +1198,7 @@ function SuperAdminOverview({
   extraErrors: string[]
   sections: DashboardSummary['sections']
 }) {
-  const sectionLinks = ['/dashboard/bookings', '/dashboard/stalls', '/dashboard/audit', '/dashboard/content#blog-moderation']
+  const sectionLinks = ['/dashboard/bookings', '/dashboard/stalls', '/dashboard/audit', '/dashboard/blog-approvals']
   return (
     <>
       <section className="role-super-admin-top-grid">

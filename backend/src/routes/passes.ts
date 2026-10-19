@@ -44,12 +44,13 @@ function scopeCondition(scope: StaffScope, alias: string) {
   const parts: string[] = []
   const params: string[] = []
   if (scope.eventIds.length) { parts.push(`${alias}.id IN (${scope.eventIds.map(() => '?').join(',')})`); params.push(...scope.eventIds) }
-  if (scope.states.length) { parts.push(`LOWER(${alias}.state) IN (${scope.states.map(() => '?').join(',')})`); params.push(...scope.states) }
+  if (scope.states.length) { parts.push(`(${scope.states.map(() => `FIND_IN_SET(?, REPLACE(LOWER(${alias}.state), ', ', ','))>0`).join(' OR ')})`); params.push(...scope.states) }
   return { sql: parts.length ? `(${parts.join(' OR ')})` : '1=0', params }
 }
 
+const eventStates = (state: string) => String(state).toLowerCase().split(',').map((part) => part.trim()).filter(Boolean)
 const scopeAllows = (scope: StaffScope, event: { id: string; state: string }) =>
-  scope.eventIds.includes(event.id) || scope.states.includes(String(event.state).toLowerCase())
+  scope.eventIds.includes(event.id) || eventStates(event.state).some((state) => scope.states.includes(state))
 
 const openEventWhere = `e.status IN ('APPROVED','PUBLISHED') AND e.ends_at>=NOW()
   AND (e.registration_deadline IS NULL OR e.registration_deadline>NOW())`
@@ -84,7 +85,8 @@ const publicRegister = async (req: Request, res: Response, next: NextFunction) =
       fullName: z.string().trim().min(2).max(160),
       email: z.string().email().max(255),
       phone: z.string().trim().regex(/^[0-9+ ]{10,14}$/),
-      city: z.enum(['Indore', 'Bhopal', 'Ujjain', 'Dewas', 'Other']),
+      city: z.string().trim().min(2).max(120),
+      state: z.string().trim().max(120).optional(),
       attendingAs: z.enum(['Visitor', 'Art Lover / Collector', 'Artist', 'Student', 'Interior Designer / Architect']),
       marketingConsent: z.boolean(),
     }).parse(req.body)
@@ -103,9 +105,9 @@ const publicRegister = async (req: Request, res: Response, next: NextFunction) =
     const challengeId = crypto.randomUUID()
     const expiresAt = otpExpiry()
     await pool.query(`INSERT INTO visitor_registration_challenges
-      (id,event_id,email,full_name,phone,city,attending_as,marketing_consent,code_hash,expires_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [challengeId, event.id, email, input.fullName, input.phone, input.city, input.attendingAs, input.marketingConsent, hashOtp(code), expiresAt])
+      (id,event_id,email,full_name,phone,city,state,attending_as,marketing_consent,code_hash,expires_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [challengeId, event.id, email, input.fullName, input.phone, input.city, input.state || null, input.attendingAs, input.marketingConsent, hashOtp(code), expiresAt])
 
     const delivery = await queueEmail(email, 'Verify your free Haat of Art entry pass',
       `Your verification code is ${code}. It expires in 5 minutes. Use it on the registration page to confirm your free entry pass.`,
@@ -131,7 +133,7 @@ const publicVerify = async (req: Request, res: Response, next: NextFunction) => 
     }).parse(req.body)
     const email = input.email.toLowerCase()
     const result = await withTransaction(async (connection) => {
-      const [challengeRows] = await connection.query<any[]>(`SELECT id,event_id eventId,full_name fullName,phone,city,
+      const [challengeRows] = await connection.query<any[]>(`SELECT id,event_id eventId,full_name fullName,      phone,city,state,
         attending_as attendingAs,marketing_consent marketingConsent,code_hash codeHash,attempts,expires_at expiresAt
         FROM visitor_registration_challenges
         WHERE email=? AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [email])
@@ -180,8 +182,8 @@ const publicVerify = async (req: Request, res: Response, next: NextFunction) => 
       }
       if (!registration) {
         const registrationId = crypto.randomUUID()
-        await connection.query(`INSERT INTO event_registrations(id,event_id,visitor_id,status)
-          VALUES (?,?,?,'REGISTERED')`, [registrationId, challenge.eventId, profileId])
+        await connection.query(`INSERT INTO event_registrations(id,event_id,visitor_id,status,visitor_state,visitor_city)
+          VALUES (?,?,?,'REGISTERED',?,?)`, [registrationId, challenge.eventId, profileId, challenge.state, challenge.city])
         registration = { registrationId, status: 'REGISTERED', passId: null, revokedAt: null }
       }
       const passId = registration.passId ?? crypto.randomUUID()

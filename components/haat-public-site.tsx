@@ -10,7 +10,6 @@ import { GuestsSection } from './home/guests-section'
 import { GuestFeedbackSection } from './home/guest-feedback-section'
 import { BlogSection } from './home/blog-section'
 import { VenuePartners } from './home/venue-partners'
-import { DEMO_LABEL } from '@/lib/demo-home-content'
 import type { SiteContent } from '@/lib/site-content'
 import type { BlogSummary, PublicGuest, PublicGuestFeedback } from '@/lib/api'
 
@@ -71,7 +70,6 @@ export function HaatPublicSite({
         <BlogSection items={blogs} />
         <VenuePartners />
       </section>
-      <p className="th-demo-note">{DEMO_LABEL}</p>
     </PublicShell>
   )
 }

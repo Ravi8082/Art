@@ -16,6 +16,11 @@ import { guestsRouter } from './routes/guests.js'
 import { bookingsRouter } from './routes/bookings.js'
 import { dashboardRouter } from './routes/dashboard.js'
 import { passesRouter } from './routes/passes.js'
+import { artistProfileRouter } from './routes/artist-profile.js'
+import { accountRouter } from './routes/account.js'
+import { teamRouter } from './routes/team.js'
+import { visitorReportRouter } from './routes/visitor-report.js'
+import { siteSettingsRouter } from './routes/site-settings.js'
 import { startOutboxWorker } from './services/outbox.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
@@ -54,6 +59,11 @@ app.use('/api/guests', guestsRouter)
 app.use('/api/bookings', bookingsRouter)
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api/passes', passesRouter)
+app.use('/api/artist-profile', artistProfileRouter)
+app.use('/api/account', accountRouter)
+app.use('/api/team', teamRouter)
+app.use('/api/visitor-report', visitorReportRouter)
+app.use('/api/site-settings', siteSettingsRouter)
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }))
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof ZodError) return res.status(400).json({ error: 'Invalid request', issues: error.issues })

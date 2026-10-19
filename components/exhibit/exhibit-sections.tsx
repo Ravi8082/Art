@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, BadgeIndianRupee, Handshake, Megaphone, Palette, ShieldCheck, Image as ImageIcon, MapPin, Users, Share2 } from 'lucide-react'
 import { SafeImage } from '@/components/home/safe-image'
-import { exhibitMentor, exhibitParticipate, exhibitPromos, exhibitStats, exhibitWhy, type PricingTable } from '@/lib/demo-exhibit'
+import { exhibitMentor, exhibitParticipate, exhibitPromos, exhibitWhy, type PricingTable } from '@/lib/demo-exhibit'
 
 const benefitIcons = { sales: BadgeIndianRupee, network: Handshake, media: Megaphone, brand: Palette, support: ShieldCheck }
 const statIcons = { artwork: ImageIcon, venue: MapPin, audience: Users, network: Share2 }
@@ -64,10 +64,10 @@ export function MentorSection() {
   )
 }
 
-export function StatsSection() {
+export function StatsSection({ stats }: { stats: { icon: string; label: string; value: string; text: string }[] }) {
   return (
     <section className="ex-stats">
-      {exhibitStats.map((s) => {
+      {stats.map((s) => {
         const Icon = statIcons[s.icon as keyof typeof statIcons]
         return <div key={s.label}><span className="ex-stat-icon"><Icon size={22} /></span><div><h4>{s.label}</h4><strong>{s.value}</strong><p>{s.text}</p></div></div>
       })}

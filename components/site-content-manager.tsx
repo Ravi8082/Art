@@ -5,6 +5,7 @@ import type { FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, ExternalLink, FileText, Image, Plus, Save, ShieldCheck, Trash2, Users } from 'lucide-react'
 import { textFields, type SiteContent } from '@/lib/site-content'
+import { ArtistProfileReview } from '@/components/artist/artist-profile-review'
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const maxFileBytes = 50 * 1024 * 1024
@@ -19,6 +20,7 @@ type BlogReviewPost = {
   email: string
   status: Exclude<BlogReviewStatus, 'ALL'>
   reviewNote: string | null
+  media?: { id: string; mediaType: 'IMAGE' | 'VIDEO'; url: string }[]
   submittedAt: string
 }
 
@@ -34,7 +36,14 @@ async function api(path: string, init: RequestInit = {}) {
   return response
 }
 
-export function SiteContentManager() {
+const pageCopy = {
+  content: { eyebrow: 'The Haat of Art · Website content', title: 'Content management', text: 'Manage the homepage copy, featured artwork and artist spotlights shown across the live website.' },
+  blogs: { eyebrow: 'The Haat of Art · Community stories', title: 'Blog approvals', text: 'Review blogs submitted by visitors and artists. Only approved blogs appear on the public Blog page.' },
+  artists: { eyebrow: 'The Haat of Art · Artists', title: 'Artist profile approvals', text: 'Review artist profiles. Only approved artists appear on the public Artists page.' },
+} as const
+
+export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'blogs' | 'artists' }) {
+  const copy = pageCopy[mode]
   const [signedIn, setSignedIn] = useState(false)
   const [canReviewBlogs, setCanReviewBlogs] = useState(false)
   const [content, setContent] = useState<SiteContent>({ text: {}, artists: [], artworks: [] })
@@ -182,9 +191,9 @@ export function SiteContentManager() {
     <main className="event-admin site-content-admin">
       <header className="event-admin-header site-content-header">
         <div>
-          <p className="eyebrow">The Haat of Art · Website content</p>
-          <h1>Content management</h1>
-          <p>Manage the homepage copy, featured artwork and artist spotlights shown across the live website.</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h1>{copy.title}</h1>
+          <p>{copy.text}</p>
         </div>
         <div className="site-content-header-actions">
           <Link className="site-content-public-link" href="/" target="_blank" rel="noopener noreferrer"><span>View live website</span><ExternalLink size={14} /></Link>
@@ -195,7 +204,7 @@ export function SiteContentManager() {
       {!signedIn && (
         <form className="event-form site-content-login" onSubmit={signIn}>
           <span className="site-content-section-icon"><ShieldCheck size={20} /></span>
-          <div><h2>Sign in to edit content</h2><p>Use your dashboard account to make changes to the public website.</p></div>
+          <div><h2>Sign in to continue</h2><p>Use your dashboard account to review and manage the website.</p></div>
           <label>Admin email<input name="email" type="email" autoComplete="username" required /></label>
           <label>Admin password<input name="password" type="password" autoComplete="current-password" required /></label>
           <button disabled={busy} type="submit">{busy ? 'Signing in…' : 'Sign in securely'}</button>
@@ -207,13 +216,13 @@ export function SiteContentManager() {
 
       {signedIn && (
         <div className="site-content-workspace">
-          <div className="site-content-summary">
+          {mode === 'content' && <div className="site-content-summary">
             <article><span><FileText size={18} /></span><div><small>Editable homepage fields</small><strong>{textFields.length}</strong></div></article>
             <article><span><Image size={18} /></span><div><small>Featured works</small><strong>{content.artworks.length}</strong></div></article>
             <article><span><Users size={18} /></span><div><small>Artists in focus</small><strong>{content.artists.length}</strong></div></article>
-          </div>
+          </div>}
 
-          {canReviewBlogs && <section className="blog-moderation" id="blog-moderation" aria-labelledby="blog-moderation-title">
+          {mode === 'blogs' && canReviewBlogs && <section className="blog-moderation" id="blog-moderation" aria-labelledby="blog-moderation-title">
             <header className="blog-moderation-header">
               <div>
                 <p className="eyebrow">Community stories</p>
@@ -255,6 +264,13 @@ export function SiteContentManager() {
                       <summary>Read full submission</summary>
                       <div className="blog-moderation-card-body">{post.body}</div>
                     </details>
+                    {post.media && post.media.length > 0 && (
+                      <div className="blog-media">
+                        {post.media.map((item) => item.mediaType === 'VIDEO'
+                          ? <video key={item.id} src={`${apiBaseUrl}${item.url}`} controls preload="metadata" playsInline />
+                          : <img key={item.id} src={`${apiBaseUrl}${item.url}`} alt="" loading="lazy" />)}
+                      </div>
+                    )}
                     {post.status === 'PENDING' && (
                       <>
                         <label className="blog-moderation-note">Optional note for the submitter
@@ -277,6 +293,9 @@ export function SiteContentManager() {
               </div>}
           </section>}
 
+          {mode === 'artists' && canReviewBlogs && <ArtistProfileReview />}
+
+          {mode === 'content' && <>
           <form className="event-form site-content-section site-content-text-form" onSubmit={saveText} key={JSON.stringify(content.text)}>
             <div className="site-content-section-heading">
               <span className="site-content-section-icon"><FileText size={19} /></span>
@@ -340,6 +359,7 @@ export function SiteContentManager() {
               ))}
             </ul>
           </form>
+          </>}
         </div>
       )}
     </main>

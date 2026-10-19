@@ -13,7 +13,7 @@ const artist = [requireAuth] as const
 const manage = [requireAuth, requirePermission('bookings:manage')] as const
 const uploadBody = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'], limit: '25mb' })
 
-const HOLD_MINUTES = Math.max(0.05, Number(process.env.BOOKING_HOLD_MINUTES ?? 15))
+const HOLD_MINUTES = Math.max(0.05, Number(process.env.BOOKING_HOLD_MINUTES ?? 1440))
 const webhookSecret = () => process.env.PAYMENT_WEBHOOK_SECRET ?? 'development-webhook-secret'
 const signWebhook = (idempotencyKey: string, transactionRef: string, amount: number, status: string) =>
   crypto.createHmac('sha256', webhookSecret()).update(`${idempotencyKey}.${transactionRef}.${amount}.${status}`).digest('hex')
@@ -90,6 +90,22 @@ async function exhibitionsWithMedia() {
 // ---------- public: catalogue ----------
 bookingsRouter.get('/exhibitions', async (_req, res, next) => {
   try { res.json(await exhibitionsWithMedia()) } catch (error) { next(error) }
+})
+
+bookingsRouter.get('/exhibit-info', async (_req, res, next) => {
+  try {
+    const [types] = await pool.query<any[]>('SELECT id, code, name, category, width_m widthM, depth_m depthM, price, tax_rate taxRate, includes FROM stall_types WHERE active = 1 ORDER BY sort_order, price')
+    const [[window]] = await pool.query<any[]>(`SELECT MIN(starts_at) startsAt, MAX(ends_at) endsAt, COUNT(*) upcoming FROM events
+      WHERE status IN ('PUBLISHED','APPROVED') AND ends_at >= NOW()`)
+    const [[stats]] = await pool.query<any[]>(`SELECT
+      (SELECT COUNT(*) FROM events WHERE status IN ('PUBLISHED','APPROVED')) events,
+      (SELECT COUNT(*) FROM stall_bookings WHERE status='CONFIRMED') stallsBooked,
+      (SELECT COUNT(*) FROM event_registrations WHERE status='REGISTERED') visitors,
+      (SELECT COUNT(*) FROM artist_profiles WHERE status='APPROVED') artists,
+      (SELECT COUNT(*) FROM stalls s JOIN events e ON e.id=s.event_id WHERE e.status IN ('PUBLISHED','APPROVED') AND e.ends_at>=NOW() AND s.status='AVAILABLE'
+        AND NOT EXISTS (SELECT 1 FROM stall_bookings b WHERE b.stall_id=s.id AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING'))) openStalls`)
+    res.json({ stallTypes: types, window, stats })
+  } catch (error) { next(error) }
 })
 
 bookingsRouter.get('/stall-types', async (_req, res, next) => {
@@ -282,6 +298,23 @@ bookingsRouter.get('/mine', ...artist, async (req: AuthRequest, res, next) => {
 })
 
 // ---------- public: booking + sandbox payment ----------
+async function alertAdminsOfBooking(bookingId: string) {
+  const [[row]] = await pool.query<any[]>(
+    `SELECT b.booking_ref ref, b.total_amount total, a.first_name firstName, a.last_name lastName, a.phone, u.email,
+            e.title eventTitle, s.code stallCode, st.name stallType
+     FROM stall_bookings b JOIN exhibition_applications a ON a.id=b.application_id JOIN users u ON u.id=b.user_id
+     JOIN events e ON e.id=b.event_id JOIN stalls s ON s.id=b.stall_id JOIN stall_types st ON st.id=b.stall_type_id
+     WHERE b.id=?`, [bookingId])
+  if (!row) return
+  const [admins] = await pool.query<any[]>(
+    `SELECT DISTINCT u.email FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+     WHERE r.name IN ('ADMIN','SUPER_ADMIN') AND u.status='ACTIVE' LIMIT 20`)
+  const text = `New stall booking ${row.ref}: ${row.firstName} ${row.lastName} booked stall ${row.stallCode} (${row.stallType}) at ${row.eventTitle}. `
+    + `Amount ₹${Number(row.total).toLocaleString('en-IN')} incl. GST. Contact: ${row.phone} / ${row.email}. Please call them to collect payment, then mark it paid in Bookings & Payments.`
+  for (const admin of admins) {
+    await queueEmail(admin.email, `New stall booking ${row.ref} — contact to collect payment`, text)
+  }
+}
 bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) => {
   try {
     const input = z.object({ applicationId: z.string().uuid(), stallId: z.string().uuid() }).parse(req.body)
@@ -321,6 +354,7 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
       return done({ bookingId, bookingRef, totalAmount: total, holdExpiresAt: holdExpiresAt.toISOString(), status: 'PAYMENT_PENDING' })
     })
     if (!result.ok) return res.status(result.status).json({ error: result.error })
+    void alertAdminsOfBooking(result.bookingId).catch(() => undefined)
     res.status(201).json(result)
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_ENTRY') {
@@ -580,7 +614,8 @@ bookingsRouter.get('/admin/bookings', ...manage, async (req: AuthRequest, res, n
     const params = status.success ? [status.data] : []
     const [bookings] = await pool.query<any[]>(
       `SELECT b.id, b.booking_ref bookingRef, b.status, b.total_amount totalAmount, b.currency, b.created_at createdAt,
-              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, u.email,
+              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, a.phone, u.email,
+              st.name stallType, (SELECT MAX(h.expires_at) FROM stall_holds h WHERE h.booking_id = b.id AND h.released_at IS NULL) holdExpiresAt,
               e.title eventTitle, s.code stallCode, b.payment_proof_asset_id paymentProofAssetId, pp.mime_type paymentProofMime,
               p.id paymentId, p.status paymentStatus, p.method paymentMethod, p.transaction_ref transactionRef, p.amount paidAmount,
               i.invoice_no invoiceNo
@@ -589,6 +624,7 @@ bookingsRouter.get('/admin/bookings', ...manage, async (req: AuthRequest, res, n
        JOIN users u ON u.id = b.user_id
        JOIN events e ON e.id = b.event_id
        JOIN stalls s ON s.id = b.stall_id
+       JOIN stall_types st ON st.id = b.stall_type_id
        LEFT JOIN payments p ON p.id = (
          SELECT p2.id FROM payments p2 WHERE p2.booking_id = b.id
          ORDER BY FIELD(p2.status, 'VERIFIED', 'PENDING', 'FAILED', 'REJECTED'), p2.created_at DESC, p2.id DESC LIMIT 1

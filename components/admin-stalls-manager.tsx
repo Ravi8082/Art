@@ -608,7 +608,7 @@ export function AdminStallsManager() {
         {!selected && <p className="event-form-note">Select an exhibition above to lay out its stalls.</p>}
         {selected && (
           <>
-            <p className="event-form-note">{selected.title} · {selected.availableStalls} of {selected.totalStalls} stalls bookable.</p>
+            <p className="event-form-note">{selected.title} · {selected.totalStalls > 0 ? `${selected.availableStalls} of ${selected.totalStalls} stalls bookable.` : 'no stalls yet — use "Generate block" below to create the slots.'}</p>
             <div className="asm-legend">
               {legendOrder.map((status) => (
                 <span key={status} className={`asm-legend-item ${statusStyles[status].className}`}><i aria-hidden="true" />{statusStyles[status].label}</span>

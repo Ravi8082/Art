@@ -216,12 +216,12 @@ authRouter.post('/resume-visitor-registration', visitorResumeLimit, async (req, 
 
 authRouter.post('/logout', (_req, res) => { res.clearCookie('session'); res.status(204).end() })
 authRouter.get('/me', requireAuth, async (req: AuthRequest, res, next) => { try { const [[rows], [permissions]] = await Promise.all([
-  pool.query<any[]>('SELECT email, full_name fullName FROM users WHERE id=?', [req.user!.id]),
+  pool.query<any[]>("SELECT u.email, u.full_name fullName, IF(p.avatar_data IS NULL, NULL, CONCAT('/api/account/avatar?v=', p.avatar_version)) avatarUrl FROM users u LEFT JOIN account_profiles p ON p.user_id=u.id WHERE u.id=?", [req.user!.id]),
   pool.query<any[]>(`SELECT name FROM (
     SELECT p.name FROM user_roles ur JOIN role_permissions rp ON rp.role_id=ur.role_id
       JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=?
     UNION
     SELECT p.name FROM user_permissions up JOIN permissions p ON p.id=up.permission_id WHERE up.user_id=?
   ) granted_permissions ORDER BY name`, [req.user!.id, req.user!.id]),
-]); res.json({ user: { ...req.user, email: rows[0]?.email ?? '', fullName: rows[0]?.fullName ?? '', permissions: permissions.map((entry: { name: string }) => entry.name) } }) } catch (error) { next(error) } })
+]); res.json({ user: { ...req.user, email: rows[0]?.email ?? '', fullName: rows[0]?.fullName ?? '', avatarUrl: rows[0]?.avatarUrl ?? null, permissions: permissions.map((entry: { name: string }) => entry.name) } }) } catch (error) { next(error) } })
 authRouter.post('/revoke-sessions', requireAuth, async (req: AuthRequest, res, next) => { try { await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.user!.id]); res.status(204).end() } catch (error) { next(error) } })
