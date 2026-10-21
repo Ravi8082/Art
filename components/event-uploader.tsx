@@ -115,18 +115,18 @@ export function EventUploader() {
     setError('')
 
     if (files.length === 0) {
-      setError('Event ke saath kam se kam ek image ya video select karein.')
+      setError('Select at least one image or video for the event.')
       return
     }
     const invalidFile = files.find((file) => !allowedTypes.has(file.type) || file.size > maxFileBytes)
     if (invalidFile) {
-      setError(`${invalidFile.name}: supported image/video format use karein; maximum size 50 MB per file hai.`)
+      setError(`${invalidFile.name}: use a supported image/video format; the maximum size is 50 MB per file.`)
       return
     }
 
     const form = new FormData(formElement)
     if (!states.length || !cities.length) {
-      setError('Kam se kam ek state aur ek city select karein.')
+      setError('Select at least one state and one city.')
       return
     }
     const startsAt = new Date(String(form.get('startsAt')))
@@ -174,7 +174,7 @@ export function EventUploader() {
         if (!upload.ok) throw new Error(`${file.name}: ${await responseError(upload)}`)
       }
 
-      setMessage(`Event ${eventId}, ${totalSlots} stall slot(s) aur ${files.length} media file(s) save hue. Approval ke baad homepage par dikh sakte hain.`)
+      setMessage(`Event ${eventId}, ${totalSlots} stall slot(s) and ${files.length} media file(s) saved. They can appear on the homepage after approval.`)
       formElement.reset()
       setStartValue(''); setEndValue('')
       setFiles([])
@@ -184,7 +184,7 @@ export function EventUploader() {
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : 'Unknown error'
       setError(eventId
-        ? `Event ${eventId} create ho gaya, lekin media upload complete nahi hua: ${detail}`
+        ? `Event ${eventId} was created, but the media upload did not complete: ${detail}`
         : detail)
     } finally {
       setBusy(false)
@@ -247,7 +247,7 @@ export function EventUploader() {
                 </div>
                 <div className="event-dates dashboard-event-dates">
                   <label>Starts at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="startsAt" type="datetime-local" required value={startValue} onChange={(e) => changeStart(e.target.value)} /></span></label>
-                  <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required value={endValue} min={startValue || undefined} onChange={(e) => setEndValue(e.target.value)} /></span>{startValue && endValue && endValue <= startValue && <small role="alert" style={{ color: '#b42318' }}>End date start ke baad honi chahiye.</small>}</label>
+                  <label>Ends at<span className="dashboard-event-input-icon"><Clock3 size={15} /><input name="endsAt" type="datetime-local" required value={endValue} min={startValue || undefined} onChange={(e) => setEndValue(e.target.value)} /></span>{startValue && endValue && endValue <= startValue && <small role="alert" style={{ color: '#b42318' }}>End date must be after the start date.</small>}</label>
                 </div>
               </div>
             </section>

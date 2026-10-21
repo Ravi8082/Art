@@ -460,7 +460,7 @@ export function AdminStallsManager() {
     return (
       <main className="event-admin asm">
         <header className="event-admin-header">
-          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>Stall &amp; Floor Plan Manager</h1><p>Manage karne ke liye admin sign-in zaroori hai.</p></div>
+          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>Stall &amp; Floor Plan Manager</h1><p>Admin sign-in is required to manage stalls and floor plans.</p></div>
           <Link className="event-admin-back" href="/dashboard">Dashboard</Link>
         </header>
         <form className="event-form" onSubmit={signIn}>

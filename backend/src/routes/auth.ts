@@ -9,6 +9,7 @@ import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { sessionCookieOptions } from '../middleware/session-cookie.js'
 import { createOtp, verifyOtp } from '../services/mailer.js'
+import { recordAudit } from '../services/audit.js'
 
 export const authRouter = Router()
 const registerSchema = z.object({ email: z.string().email().max(255), password: z.string().min(12).max(128), fullName: z.string().trim().min(2).max(160) })
@@ -60,12 +61,55 @@ const staffRoles = new Set(['SUPER_ADMIN', 'ADMIN', 'CONTENT_MANAGER', 'REGISTRA
 const staffMfaEnabled = () => process.env.STAFF_MFA !== 'off'
 const issueMfaToken = (id: string) => jwt.sign({ sub: id, purpose: 'mfa' }, secret(), { expiresIn: '5m' })
 
+const MAX_FAILED_LOGINS = 3
+const LOGIN_FAILURE_WINDOW_MINUTES = 15
+export const LOGIN_OTP_MESSAGE = "We've sent a 6-digit code to your email. Enter it here."
+
+// Failed attempts are kept in audit_logs (no schema change). A LOGIN_RESET row, written after a successful
+// code verification, starts a fresh count.
+async function recentFailedLogins(userId: string) {
+  const [rows] = await pool.query<any[]>(
+    `SELECT COUNT(*) AS c FROM audit_logs
+     WHERE entity_type='user' AND entity_id=? AND action='LOGIN_FAILED'
+       AND created_at > NOW() - INTERVAL ${LOGIN_FAILURE_WINDOW_MINUTES} MINUTE
+       AND id > COALESCE((SELECT MAX(id) FROM audit_logs WHERE entity_type='user' AND entity_id=? AND action='LOGIN_RESET'), 0)`,
+    [userId, userId],
+  )
+  return Number(rows[0]?.c ?? 0)
+}
+
+async function requireLoginOtp(res: Response, user: { id: string; email: string }) {
+  // A code requested moments ago is still valid, so a cooldown error is not fatal.
+  const mail = await createOtp(user.id, 'LOGIN', user.email).catch((error: { status?: number }) => {
+    if (error.status === 429) return { delivered: true }
+    throw error
+  })
+  if (!mail.delivered) return res.status(503).json({ error: 'We could not send the verification code. Please try again shortly.' })
+  return res.status(403).json({
+    error: `${LOGIN_OTP_MESSAGE} Please complete the sign-in on the /login page.`,
+    message: LOGIN_OTP_MESSAGE,
+    mfaRequired: true,
+    mfaToken: issueMfaToken(user.id),
+  })
+}
+
 authRouter.post('/login', loginLimit, async (req, res, next) => {
   try {
     const input = z.object({ email: z.string().email(), password: z.string() }).parse(req.body)
     const [rows] = await pool.query<any[]>('SELECT id,email,password_hash,status,email_verified_at FROM users WHERE email=?', [input.email.toLowerCase()])
     const user = rows[0]
-    if (!user || !(await bcrypt.compare(input.password, user.password_hash)) || user.status !== 'ACTIVE' || !user.email_verified_at) return res.status(401).json({ error: 'Invalid credentials or unverified account' })
+    const passwordOk = Boolean(user) && await bcrypt.compare(input.password, user.password_hash)
+    const eligible = Boolean(user) && user.status === 'ACTIVE' && Boolean(user.email_verified_at)
+    if (eligible) {
+      const failures = await recentFailedLogins(user.id)
+      // After three wrong passwords a code is required, even if the password is now correct.
+      if (failures >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
+      if (!passwordOk) {
+        await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id).catch(() => undefined)
+        if (failures + 1 >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
+      }
+    }
+    if (!user || !passwordOk || !eligible) return res.status(401).json({ error: 'Invalid credentials or unverified account' })
     if (staffMfaEnabled()) {
       const [roleRows] = await pool.query<any[]>('SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=?', [user.id])
       if (roleRows.some((role) => staffRoles.has(role.name))) {
@@ -90,6 +134,7 @@ authRouter.post('/login/verify', otpVerifyLimit, async (req, res, next) => {
     } catch { return res.status(401).json({ error: 'Verification expired. Please sign in again.' }) }
     const [rows] = await pool.query<any[]>("SELECT id FROM users WHERE id=? AND status='ACTIVE'", [userId])
     if (!rows[0] || !(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
+    await recordAudit(userId, 'LOGIN_RESET', 'user', userId).catch(() => undefined)
     setSession(res, userId)
     res.json({ userId })
   } catch (error) { next(error) }
@@ -130,11 +175,12 @@ authRouter.post('/password-reset/request', otpRequestLimit, async (req, res, nex
     const email = input.email.toLowerCase()
     const [users] = await pool.query<any[]>('SELECT id,status FROM users WHERE email=?', [email])
     const user = users[0]
-    if (user && user.status === 'ACTIVE') {
+    if (!user) return res.status(404).json({ error: 'No account found with this email. Please register first.', notRegistered: true })
+    if (user.status === 'ACTIVE') {
       const mail = await createOtp(user.id, 'RESET_PASSWORD', email)
       if (!mail.delivered) console.error('Password reset OTP email could not be delivered', { reason: mail.reason })
     }
-    res.status(202).json({ ok: true, message: 'If an active account uses that email, a password reset code will be sent.' })
+    res.status(202).json({ ok: true, message: 'A password reset code has been sent to your email.' })
   } catch (error) { next(error) }
 })
 

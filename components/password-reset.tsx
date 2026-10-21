@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 export function PasswordReset() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -26,10 +28,15 @@ export function PasswordReset() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       })
-      const result = await response.json() as { message?: string; error?: string }
+      const result = await response.json() as { message?: string; error?: string; notRegistered?: boolean }
+      if (response.status === 404 && result.notRegistered) {
+        setError('No account found with this email. Redirecting you to the register page…')
+        setTimeout(() => router.push('/visitor/register'), 1800)
+        return
+      }
       if (!response.ok) throw new Error(result.error || 'Could not request a reset code.')
       setRequested(true)
-      setMessage(result.message || 'If the account exists, a reset code has been sent.')
+      setMessage(result.message || 'A reset code has been sent to your email.')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not request a reset code.')
     } finally {

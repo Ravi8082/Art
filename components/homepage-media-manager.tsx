@@ -57,12 +57,12 @@ export function HomepageMediaManager() {
     setError('')
     const selected = slots.filter((slot) => files[slot.key])
     if (!selected.length) {
-      setError('Replace karne ke liye pehle kam se kam ek file select karein.')
+      setError('Select at least one file to replace.')
       return
     }
     const oversized = selected.find((slot) => files[slot.key].size > maxFileBytes)
     if (oversized) {
-      setError(`${oversized.label}: maximum upload size 50 MB hai.`)
+      setError(`${oversized.label}: the maximum upload size is 50 MB.`)
       return
     }
 
@@ -113,13 +113,13 @@ export function HomepageMediaManager() {
         <div>
           <p className="eyebrow">The Haat of Art · Homepage content</p>
           <h1>Video and images</h1>
-          <p>Video, logo aur homepage gallery images select karke replace karein. Files database mein save hongi.</p>
+          <p>Select the video, logo and homepage gallery images to replace. Files are saved in the database.</p>
         </div>
         <Link className="event-admin-back" href="/dashboard">Dashboard</Link>
       </header>
 
       <form className="event-form media-manager-form" onSubmit={saveMedia}>
-        <p className="event-form-note">Upload ke liye admin sign-in zaroori hai. Password form submit ke baad save nahi hota.</p>
+        <p className="event-form-note">Admin sign-in is required to upload. The password is not saved after the form is submitted.</p>
         <label>Admin email<input name="adminEmail" type="email" autoComplete="username" required /></label>
         <label>Admin password<input name="adminPassword" type="password" autoComplete="current-password" required /></label>
         <div className="media-slot-grid">

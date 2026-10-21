@@ -122,7 +122,7 @@ export function GuestFeedbackManager() {
   }
 
   function removeGuest(guest: PublicGuest) {
-    if (!window.confirm('Pakka delete karna hai? Feedback linked to this guest stays but loses the link.')) return
+    if (!window.confirm('Delete this guest? Feedback linked to this guest stays but loses the link.')) return
     void run(async () => { await api(`/api/guests/${guest.id}`, { method: 'DELETE' }) }, 'Guest deleted.')
   }
 
@@ -155,7 +155,7 @@ export function GuestFeedbackManager() {
   }
 
   function removeFeedback(entry: PublicGuestFeedback) {
-    if (!window.confirm('Pakka delete karna hai?')) return
+    if (!window.confirm('Delete this item permanently?')) return
     void run(async () => { await api(`/api/guests/feedback/${entry.id}`, { method: 'DELETE' }) }, 'Feedback deleted.')
   }
 
@@ -163,7 +163,7 @@ export function GuestFeedbackManager() {
     return (
       <main className="event-admin">
         <header className="event-admin-header">
-          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>Guests &amp; Feedback Manager</h1><p>Manage karne ke liye admin sign-in zaroori hai.</p></div>
+          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>Guests &amp; Feedback Manager</h1><p>Admin sign-in is required to manage guests and feedback.</p></div>
           <Link className="event-admin-back" href="/dashboard">Dashboard</Link>
         </header>
         <form className="event-form" onSubmit={signIn}>

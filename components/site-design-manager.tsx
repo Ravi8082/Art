@@ -53,10 +53,10 @@ export function SiteDesignManager() {
 
   const save = () => run(async () => {
     await api('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) })
-    return 'Saved. Website par changes 15-30 seconds mein live ho jayenge.'
+    return 'Saved. Changes go live on the website within 15-30 seconds.'
   })
   const reset = () => {
-    if (!window.confirm('Navbar, footer aur theme ko original default par reset karna hai?')) return
+    if (!window.confirm('Reset the navbar, footer and theme to the original defaults?')) return
     run(async () => {
       await api('/api/site-settings', { method: 'DELETE' })
       setSettings(defaultSiteSettings)
@@ -65,7 +65,7 @@ export function SiteDesignManager() {
   }
 
   if (state === 'loading') return <section className="account-page"><p>Loading…</p></section>
-  if (state === 'denied') return <section className="account-page"><p>Aapke paas site design edit karne ka access nahi hai.</p></section>
+  if (state === 'denied') return <section className="account-page"><p>You do not have access to edit the site design.</p></section>
 
   const { theme, navbar, footer } = settings
   const text = (label: string, key: 'about' | 'script' | 'scriptSub' | 'newsletterTitle' | 'newsletterText' | 'address' | 'phone' | 'email' |   'hours' | 'copyright' | 'partnersTitle' | 'whatsapp') => (
@@ -78,7 +78,7 @@ export function SiteDesignManager() {
     <section className="account-page sd-page">
       <Link className="account-back" href="/dashboard"><ArrowLeft size={16} /> Dashboard</Link>
       <header className="sd-head">
-        <div><h1>Site design</h1><p>Navbar, footer, theme colours aur contact details yahin se badlein. Images ke liye <Link href="/dashboard/homepage-media">Media library</Link>, page text ke liye <Link href="/dashboard/content">Website content</Link>.</p></div>
+        <div><h1>Site design</h1><p>Edit the navbar, footer, theme colours and contact details here. For images use the <Link href="/dashboard/homepage-media">Media library</Link> and for page text use <Link href="/dashboard/content">Website content</Link>.</p></div>
         <div className="sd-actions">
           <button type="button" className="sd-ghost" onClick={reset} disabled={busy}><RotateCcw size={16} /> Reset</button>
           <button type="button" className="sd-primary" onClick={save} disabled={busy}><Save size={16} /> {busy ? 'Saving…' : 'Save changes'}</button>
@@ -142,7 +142,7 @@ export function SiteDesignManager() {
 
       <section className="sd-card">
         <h2>Social links</h2>
-        <p className="sd-hint">https:// se shuru hone wale full URL daalein. Khali chhodne par icon /contact par jayega.</p>
+        <p className="sd-hint">Enter a full URL starting with https://. If left empty, the icon links to /contact.</p>
         <div className="sd-grid">
           {(['facebook', 'instagram', 'youtube', 'linkedin', 'x'] as const).map((key) => (
             <label className="sd-field" key={key}>{key}<input placeholder="https://" value={footer.social[key]} onChange={(e) => patchFooter({ social: { ...footer.social, [key]: e.target.value } })} /></label>

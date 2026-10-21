@@ -38,7 +38,7 @@ export function EventTourOverview() {
       const response = await fetch(`${apiBaseUrl}/api/events/${event.id}/${action}`, { method: action === 'announce' ? 'POST' : 'PATCH', credentials: 'include' })
       const body = await response.json().catch(() => ({})) as { error?: string; queued?: number }
       if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`)
-      setNote(action === 'approve' ? 'Event approved. Ab Publish karein.' : action === 'publish' ? 'Event published. Artists, visitors aur subscribers ko mail queue ho gayi.' : `Mail queue hui: ${body.queued ?? 0} recipients.`)
+      setNote(action === 'approve' ? 'Event approved. Now publish it.' : action === 'publish' ? 'Event published. Emails to artists, visitors and subscribers have been queued.' : `Emails queued: ${body.queued ?? 0} recipients.`)
       await load()
     } catch (cause) {
       setNote(cause instanceof Error ? cause.message : 'Action failed.')
@@ -55,7 +55,7 @@ export function EventTourOverview() {
       <header>
         <p className="eyebrow">Tour overview</p>
         <h2 id="tour-overview-title">Exhibitions, states &amp; audience</h2>
-        <p>Publish karte hi har artist, subscriber aur consent dene wale visitor ko mail automatic queue ho jati hai.</p>
+        <p>On publish, every artist, subscriber and consenting visitor is automatically queued to receive an email.</p>
       </header>
       <div className="tour-audience">
         <div><Palette size={16} /><b>{audience.artists}</b><small>Artists</small></div>
@@ -83,7 +83,7 @@ export function EventTourOverview() {
             <p className="tour-mail">
               {event.announcedAt && event.announceSummary
                 ? `Mail bhej di gayi (${dateLabel(event.announcedAt)}): ${event.announceSummary.artists} artists, ${event.announceSummary.visitors} visitors, ${event.announceSummary.subscribers} subscribers.`
-                : event.announcedAt ? `Mail bhej di gayi (${dateLabel(event.announcedAt)}).` : event.status === 'PUBLISHED' ? 'Mail abhi nahi gayi — "Send mail now" dabayein.' : 'Mail abhi nahi gayi — publish karte hi jayegi.'}
+                : event.announcedAt ? `Email sent (${dateLabel(event.announcedAt)}).` : event.status === 'PUBLISHED' ? 'Email not sent yet. Click "Send mail now".' : 'Email not sent yet. It is sent as soon as you publish.'}
             </p>
             <div className="tour-actions">
               {event.status === 'PENDING_APPROVAL' && <button type="button" disabled={busyId === event.id} onClick={() => void act(event, 'approve')}>Approve</button>}

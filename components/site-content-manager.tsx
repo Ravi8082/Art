@@ -138,7 +138,7 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'b
     const body = Object.fromEntries(textFields.map((field) => [field.key, String(form.get(field.key) ?? '')]))
     void run(async () => {
       await api('/api/content/text', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    }, 'Text saved. Khali chhodne par default text wapas aa jata hai.')
+    }, 'Text saved. If you leave a field empty, the default text is restored.')
   }
 
   function addArtist(event: FormEvent<HTMLFormElement>) {
@@ -146,7 +146,7 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'b
     const formElement = event.currentTarget
     const form = new FormData(formElement)
     const photo = form.get('photo')
-    if (photo instanceof File && photo.size > maxFileBytes) { setError('Photo maximum 50 MB ki ho sakti hai.'); return }
+    if (photo instanceof File && photo.size > maxFileBytes) { setError('Photo must be 50 MB or smaller.'); return }
     void run(async () => {
       const created = await api('/api/content/artists', {
         method: 'POST',
@@ -166,8 +166,8 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'b
     const formElement = event.currentTarget
     const form = new FormData(formElement)
     const file = form.get('image')
-    if (!(file instanceof File) || file.size === 0) { setError('Artwork image select karein.'); return }
-    if (file.size > maxFileBytes) { setError('Image maximum 50 MB ki ho sakti hai.'); return }
+    if (!(file instanceof File) || file.size === 0) { setError('Please select an artwork image.'); return }
+    if (file.size > maxFileBytes) { setError('Image must be 50 MB or smaller.'); return }
     void run(async () => {
       await api('/api/content/artworks', {
         method: 'POST',
@@ -183,7 +183,7 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'b
   }
 
   function remove(path: string, success: string) {
-    if (!window.confirm('Pakka delete karna hai?')) return
+    if (!window.confirm('Delete this item permanently?')) return
     void run(async () => { await api(path, { method: 'DELETE' }) }, success)
   }
 

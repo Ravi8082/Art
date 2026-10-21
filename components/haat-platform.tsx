@@ -396,7 +396,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
           <form onSubmit={signIn}>
             {mfaToken ? (
               <>
-                <p className="role-login-copy">Humne aapke email par 6-digit code bheja hai. Wo yahan daalein.</p>
+                <p className="role-login-copy">We&apos;ve sent a 6-digit code to your email. Enter it here.</p>
                 <label>Verification code<input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))} /></label>
               </>
             ) : (

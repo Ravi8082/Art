@@ -99,7 +99,7 @@ function ImageSlot({ url, alt, busy, onPick, onRemove }: { url: string | null; a
         const file = event.target.files?.[0]
         event.target.value = ''
         if (file) {
-          if (file.size > maxFileBytes) { window.alert('Image maximum 50 MB ki ho sakti hai.'); return }
+          if (file.size > maxFileBytes) { window.alert('Image must be 50 MB or smaller.'); return }
           onPick(file)
         }
       }} />
@@ -273,7 +273,7 @@ export function AboutPageManager() {
   }
 
   function remove(kind: 'team' | 'partners', id: string, success: string) {
-    if (!window.confirm('Pakka delete karna hai?')) return
+    if (!window.confirm('Delete this item permanently?')) return
     void run(async () => { await api(`/api/about/${kind}/${id}`, { method: 'DELETE' }) }, success)
   }
 
@@ -281,7 +281,7 @@ export function AboutPageManager() {
     return (
       <main className="event-admin">
         <header className="event-admin-header">
-          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>About Page Manager</h1><p>Edit karne ke liye admin sign-in zaroori hai.</p></div>
+          <div><p className="eyebrow">The Haat of Art · Content Management</p><h1>About Page Manager</h1><p>Admin sign-in is required to edit the About page.</p></div>
           <Link className="event-admin-back" href="/dashboard">Dashboard</Link>
         </header>
         <form className="event-form" onSubmit={signIn}>
