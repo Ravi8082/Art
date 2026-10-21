@@ -14,8 +14,39 @@ const transport = process.env.SMTP_HOST ? nodemailer.createTransport({
   socketTimeout: 20_000,
 }) : null
 
+export type EmailProvider = 'brevo' | 'smtp' | 'none'
+
+// MAIL_MODE=brevo|smtp selects a provider explicitly. Any other value (including the documented "log") keeps the
+// legacy behaviour: SMTP when SMTP_HOST is set, otherwise nothing is sent.
+export function selectEmailProvider(env: NodeJS.ProcessEnv = process.env): EmailProvider {
+  const mode = env.MAIL_MODE?.trim().toLowerCase()
+  if (mode === 'brevo') return env.BREVO_API_KEY && brevoSender(env) ? 'brevo' : 'none'
+  return env.SMTP_HOST ? 'smtp' : 'none'
+}
+
+function brevoSender(env: NodeJS.ProcessEnv) {
+  const email = env.BREVO_SENDER_EMAIL?.trim() || /<([^>]+)>/.exec(env.MAIL_FROM ?? '')?.[1]
+  if (!email) return null
+  return { email, name: env.BREVO_SENDER_NAME?.trim() || /^([^<]+)</.exec(env.MAIL_FROM ?? '')?.[1]?.trim() || 'The Haat of Art' }
+}
+
+async function sendViaBrevo(to: string, subject: string, text: string) {
+  const sender = brevoSender(process.env)!
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender, to: [{ email: to }], subject, textContent: text }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  // The response body is never included in errors so provider details or keys cannot leak into logs.
+  if (!response.ok) throw new Error(`Brevo request failed with status ${response.status}`)
+  return { configured: true, accepted: true }
+}
+
 export async function sendEmail(to: string, subject: string, text: string) {
-  if (!transport) return { configured: false, accepted: false }
+  const provider = selectEmailProvider()
+  if (provider === 'brevo') return sendViaBrevo(to, subject, text)
+  if (provider !== 'smtp' || !transport) return { configured: false, accepted: false }
   const result = await transport.sendMail({ from: process.env.SMTP_FROM ?? process.env.MAIL_FROM ?? 'Haat of Art <no-reply@localhost>', to, subject, text })
   return { configured: true, accepted: result.accepted.includes(to) }
 }

@@ -75,13 +75,14 @@ The Haat of Art is an exhibition and art-community platform for discovering arti
 pnpm build
 pnpm backend:build
 pnpm backend:test
+pnpm test:config
 ```
 
 Backend tests that use MySQL must use a separate disposable test database configured with `TEST_MYSQL_DATABASE`; never point tests at production data.
 
 ## Configuration and email
 
-See [`backend/.env.example`](./backend/.env.example) for the backend configuration template. SMTP is needed for real email delivery; `MAIL_MODE=log` is suitable only for local development. Use a managed database, TLS, protected secrets, and a configured email provider for deployment.
+See [`backend/.env.example`](./backend/.env.example) for the backend configuration template. Email is sent through SMTP when `SMTP_HOST` is set, or through Brevo's HTTPS API when `MAIL_MODE=brevo` (needed on hosts that block SMTP). For the free Vercel + Render + Aiven test deployment see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## Security notes
 

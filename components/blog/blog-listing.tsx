@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { SafeImage } from '@/components/home/safe-image'
-import { apiBaseUrl, formatDate, type BlogSummary } from '@/lib/api'
+import { formatDate, type BlogSummary } from '@/lib/api'
 import { blogCategories, demoBlogs } from '@/lib/demo-blogs'
 
 const PAGE_SIZE = 9
+// Public base only: server and browser must render identical URLs (empty = same-origin proxy).
+const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 type BlogCard = {
   slug: string

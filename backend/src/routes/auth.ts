@@ -7,6 +7,7 @@ import { z } from 'zod'
 import rateLimit from 'express-rate-limit'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
+import { sessionCookieOptions } from '../middleware/session-cookie.js'
 import { createOtp, verifyOtp } from '../services/mailer.js'
 
 export const authRouter = Router()
@@ -28,7 +29,7 @@ const loginLimit = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 })
 const setSession = (res: Response, id: string) => {
-  res.cookie('session', issue(id), { httpOnly: true, signed: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 15 * 60 * 1000 })
+  res.cookie('session', issue(id), sessionCookieOptions())
 }
 
 authRouter.post('/register', otpRequestLimit, async (req, res, next) => {

@@ -4,8 +4,8 @@ Express + TypeScript API backed by MySQL `art`.
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and keep `MYSQL_USER=root` / `MYSQL_PASSWORD=root` only for local development.
-2. Ensure MySQL is running and the database named by `MYSQL_DATABASE` exists (local default: `art`), then run `pnpm --dir backend migrate`.
+1. Copy `.env.example` to `.env` and fill in the `DB_*` values (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`). The legacy `MYSQL_*` names still work if `DB_*` is not set. Never commit `.env`.
+2. Ensure MySQL is running and the database named by `DB_NAME` exists (local default: `art`), then run `pnpm --dir backend migrate`.
 3. Start the API with `pnpm --dir backend dev` (port 4000).
 4. Provision the first administrator with `pnpm --dir backend provision-admin admin@example.com 'a-strong-password-at-least-16-chars'`.
 5. For the Next.js app, configure `BACKEND_API_URL` and `NEXT_PUBLIC_BACKEND_API_URL` as `http://localhost:4000` in the frontend environment.
@@ -63,7 +63,18 @@ CREATE DATABASE art CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE art_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Copy `.env.example` to `.env`, set `MYSQL_DATABASE=art`, and set `TEST_MYSQL_DATABASE=art_test`. Run `pnpm --dir backend migrate` for the development database; integration tests should override `MYSQL_DATABASE` with `art_test` in a dedicated test shell. `MAIL_MODE=log` keeps development email delivery local; OTPs and tokens are never logged by the application.
+Copy `.env.example` to `.env`, set `DB_NAME=art`, and set `TEST_MYSQL_DATABASE=art_test`. Run `pnpm --dir backend migrate` for the development database; integration tests should override `DB_NAME` with `art_test` in a dedicated test shell. `MAIL_MODE=log` keeps development email delivery local; OTPs and tokens are never logged by the application.
+
+## Switching between local MySQL and Aiven
+
+The connection is configured only through environment variables (see `.env.example`).
+
+- **Local:** `DB_HOST=127.0.0.1`, `DB_PORT=3306`, `DB_NAME=art`, `DB_SSL=false`.
+- **Aiven:** set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` from the Aiven console, `DB_SSL=true`, and `DB_SSL_CA=certs/aiven-ca.pem` (download the project CA certificate from the Aiven console into `backend/certs/`, which is gitignored). Certificate verification is always on. On hosting platforms you can supply the certificate text via `DB_SSL_CA_PEM` instead.
+
+In PowerShell, set the password for the current session only, without echoing it: `$env:DB_PASSWORD = Read-Host "DB password"`. Process environment variables take precedence over `.env`.
+
+Helper scripts (`scripts/backup-local-db.ps1`, `backend/scripts/check-db.mjs`) create a dump of the local database and inspect a database read-only. Dumps are written to `backups/`, which is gitignored.
 
 ## Production, security and scale (200k+ visitors/day)
 

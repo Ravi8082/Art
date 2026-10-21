@@ -12,6 +12,12 @@ __v0_jsx-dev-runtime.ts
 .env
 backend/.env
 backend/.env.*
+!backend/.env.example
+
+# Database dumps and TLS certificates
+backups/
+*.sql.gz
+backend/certs/
 
 # Common ignores
 node_modules

@@ -35,7 +35,7 @@ test('permission middleware rejects missing sessions and lets super admins throu
 
 test('test database is explicitly separated from the application database', () => {
   if (!process.env.TEST_MYSQL_DATABASE) return
-  assert.notEqual(process.env.TEST_MYSQL_DATABASE, process.env.MYSQL_DATABASE ?? 'art')
+  assert.notEqual(process.env.TEST_MYSQL_DATABASE, process.env.DB_NAME ?? process.env.MYSQL_DATABASE ?? 'art')
 })
 
 test('weak JWT secrets are not accepted by the configured contract', () => {

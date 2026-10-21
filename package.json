@@ -9,6 +9,7 @@
     "start": "next start",
     "backend:build": "pnpm --dir backend build",
     "backend:test": "pnpm --dir backend test",
+    "test:config": "node --test tests/next-config.test.mjs",
     "backend:test:security": "pnpm --dir backend test --test-name-pattern security",
     "dev:all": "concurrently \"pnpm dev\" \"pnpm backend:dev\""
   },

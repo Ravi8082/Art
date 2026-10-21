@@ -1,0 +1,50 @@
+# Render blueprint for the Haat of Art API (free test deployment).
+# Secrets marked `sync: false` are entered in the Render dashboard; they are never stored in Git.
+services:
+  - type: web
+    name: haat-backend
+    runtime: node
+    plan: free
+    region: singapore # same region as the Aiven service (DigitalOcean sgp)
+    rootDir: backend
+    # --include=dev: NODE_ENV=production would otherwise skip TypeScript, which the build needs.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Exact frontend origin, e.g. https://haat-of-art.vercel.app (no trailing slash or path).
+      - key: FRONTEND_ORIGIN
+        sync: false
+      # Vercel -> Render -> app: the real client IP is the third address from the socket. Verify after deploy.
+      - key: TRUST_PROXY
+        value: "2"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        value: defaultdb
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      # Contents of the Aiven CA certificate (ca.pem). Verification stays on.
+      - key: DB_SSL_CA_PEM
+        sync: false
+      # Aiven's plan allows 46 connections in total.
+      - key: DB_POOL_SIZE
+        value: "10"
+      # No real email or WhatsApp is sent until you set MAIL_MODE=brevo + BREVO_* / WHATSAPP_* yourself.
+      - key: MAIL_MODE
+        value: log
