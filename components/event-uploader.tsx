@@ -26,7 +26,9 @@ async function responseError(response: Response) {
   return `Request failed (${response.status})`
 }
 
-type StallType = { id: string; code: string; name: string; category: string; widthM: string; depthM: string; price: string; taxRate: string; includes: string }
+type StallType = { id: string; code: string; name: string; category: string; widthM: string; depthM: string; includes: string }
+type StallRate = { price: string; slots: number }
+const gstRate = 18
 const rupees = (value: string | number) => `₹${Number(value).toLocaleString('en-IN')}`
 
 export function EventUploader() {
@@ -35,14 +37,60 @@ export function EventUploader() {
   const [cities, setCities] = useState<string[]>([])
   const [customCity, setCustomCity] = useState('')
   const [stallTypes, setStallTypes] = useState<StallType[]>([])
-  const [slots, setSlots] = useState<Record<string, number>>({})
+  const [stallTypesError, setStallTypesError] = useState('')
+  const [stallTypesLoading, setStallTypesLoading] = useState(false)
+  const [stallTypesRetry, setStallTypesRetry] = useState(0)
+  const [stateRates, setStateRates] = useState<Record<string, Record<string, StallRate>>>({})
+  const [templateRates, setTemplateRates] = useState<Record<string, StallRate>>({})
   const cityOptions = states.flatMap((state) => citiesByState[state] ?? []).filter((city, index, all) => all.indexOf(city) === index && !cities.includes(city))
-  const totalSlots = Object.values(slots).reduce((sum, count) => sum + count, 0)
-  const potential = stallTypes.reduce((sum, type) => sum + (slots[type.id] ?? 0) * Number(type.price), 0)
+  const totalSlots = states.reduce((sum, state) => sum + stallTypes.reduce((stateSum, type) => stateSum + (stateRates[state]?.[type.id]?.slots ?? 0), 0), 0)
+  const potential = states.reduce((sum, state) => sum + stallTypes.reduce((stateSum, type) => {
+    const rate = stateRates[state]?.[type.id]
+    return stateSum + (rate?.slots ?? 0) * (Number(rate?.price) || 0)
+  }, 0), 0)
+  const potentialGst = potential * gstRate / 100
+  const potentialWithGst = potential + potentialGst
+  const stateTotalSlots = (state: string) => stallTypes.reduce((sum, type) => sum + (stateRates[state]?.[type.id]?.slots ?? 0), 0)
+  const statePotential = (state: string) => stallTypes.reduce((sum, type) => {
+    const rate = stateRates[state]?.[type.id]
+    return sum + (rate?.slots ?? 0) * (Number(rate?.price) || 0)
+  }, 0)
+  function updateStateRate(state: string, typeId: string, patch: Partial<StallRate>) {
+    setStateRates((current) => {
+      const currentState = current[state] ?? {}
+      return {
+        ...current,
+        [state]: {
+          ...currentState,
+          [typeId]: { ...(currentState[typeId] ?? { price: '', slots: 0 }), ...patch },
+        },
+      }
+    })
+  }
+  function updateTemplateRate(typeId: string, patch: Partial<StallRate>) {
+    setTemplateRates((current) => ({
+      ...current,
+      [typeId]: { ...(current[typeId] ?? { price: '', slots: 0 }), ...patch },
+    }))
+  }
+  function applyTemplateToStates() {
+    setStateRates(Object.fromEntries(states.map((state) => [
+      state,
+      Object.fromEntries(stallTypes.map((type) => [type.id, { price: templateRates[type.id]?.price ?? '', slots: templateRates[type.id]?.slots ?? 0 }])),
+    ])))
+  }
   const addCustomCity = () => {
     const value = customCity.trim()
     if (value && !cities.some((city) => city.toLowerCase() === value.toLowerCase())) setCities((current) => [...current, value])
     setCustomCity('')
+  }
+  const addState = (state: string) => {
+    if (state) setStates((current) => current.includes(state) ? current : [...current, state])
+  }
+  const removeState = (state: string) => {
+    setStates((current) => current.filter((item) => item !== state))
+    setCities((current) => current.filter((city) => !(citiesByState[state] ?? []).includes(city)
+      || states.some((other) => other !== state && (citiesByState[other] ?? []).includes(city))))
   }
   const [busy, setBusy] = useState(false)
   const [startValue, setStartValue] = useState('')
@@ -79,11 +127,36 @@ export function EventUploader() {
 
   useEffect(() => {
     if (authStatus !== 'signed-in') return
+    let active = true
+    setStallTypesError('')
+    setStallTypesLoading(true)
     fetch(`${apiBaseUrl}/api/bookings/stall-types`, { credentials: 'include' })
-      .then((response) => response.ok ? response.json() as Promise<StallType[]> : [])
-      .then(setStallTypes)
-      .catch(() => setStallTypes([]))
-  }, [authStatus])
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await responseError(response))
+        const types: unknown = await response.json()
+        if (!Array.isArray(types)) throw new Error('The stall category list was not in the expected format.')
+        return types as StallType[]
+      })
+      .then((types) => {
+        if (!active) return
+        setStallTypes(types)
+        setTemplateRates((current) => Object.fromEntries(types.map((type) => [type.id, current[type.id] ?? { price: '', slots: 0 }])))
+      })
+      .catch((cause: unknown) => {
+        if (!active) return
+        setStallTypes([])
+        setStallTypesError(cause instanceof Error ? cause.message : 'Stall categories could not be loaded.')
+      })
+      .finally(() => { if (active) setStallTypesLoading(false) })
+    return () => { active = false }
+  }, [authStatus, stallTypesRetry])
+
+  useEffect(() => {
+    setStateRates((current) => Object.fromEntries(states.map((state) => [
+      state,
+      Object.fromEntries(stallTypes.map((type) => [type.id, current[state]?.[type.id] ?? { price: '', slots: 0 }])),
+    ])))
+  }, [states, stallTypes])
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -129,6 +202,15 @@ export function EventUploader() {
       setError('Select at least one state and one city.')
       return
     }
+    const missingRate = states.flatMap((state) => stallTypes.map((type) => ({
+      state,
+      type,
+      rate: stateRates[state]?.[type.id] ?? { price: '', slots: 0 },
+    }))).find(({ rate }) => rate.slots > 0 && (!rate.price.trim() || !Number.isFinite(Number(rate.price)) || Number(rate.price) < 0 || Number(rate.price) > 10000000))
+    if (missingRate) {
+      setError(`Enter a valid base price for ${missingRate.type.name} in ${missingRate.state} before setting available slots.`)
+      return
+    }
     const startsAt = new Date(String(form.get('startsAt')))
     const endsAt = new Date(String(form.get('endsAt')))
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
@@ -151,7 +233,12 @@ export function EventUploader() {
           state: states.join(', '),
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
-          stalls: stallTypes.map((type) => ({ stallTypeId: type.id, count: slots[type.id] ?? 0 })).filter((item) => item.count > 0),
+          statePricing: states.flatMap((state) => stallTypes.map((type) => {
+            const rate = stateRates[state]?.[type.id] ?? { price: '', slots: 0 }
+            return rate.price.trim() || rate.slots > 0
+              ? { state, stallTypeId: type.id, price: Number(rate.price), taxRate: gstRate, slots: rate.slots }
+              : null
+          }).filter((rate): rate is NonNullable<typeof rate> => rate !== null)),
         }),
       })
       if (!response.ok) throw new Error(await responseError(response))
@@ -180,7 +267,9 @@ export function EventUploader() {
       setFiles([])
       setStates([])
       setCities([])
-      setSlots({})
+      setCustomCity('')
+      setStateRates({})
+      setTemplateRates((current) => Object.fromEntries(stallTypes.map((type) => [type.id, { price: '', slots: 0 }])))
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : 'Unknown error'
       setError(eventId
@@ -220,18 +309,18 @@ export function EventUploader() {
         {authStatus === 'signed-in' && (
           <form className="event-form dashboard-event-form" onSubmit={submitEvent}>
             <section className="dashboard-event-form-section">
-              <div className="dashboard-event-section-heading"><span><CalendarDays size={18} /></span><div><p className="eyebrow">01 · Exhibition details</p><h2>Tell us about the event</h2><p>Use clear information so visitors and artists can find your exhibition.</p></div></div>
+              <div className="dashboard-event-section-heading"><span><CalendarDays size={18} /></span><div><p className="eyebrow">Exhibition setup</p><h2>01 · Exhibition Details</h2><p>Add clear information so visitors and artists can find your exhibition.</p></div></div>
               <div className="dashboard-event-fields">
                 <label className="dashboard-event-wide">Event title<input name="title" required minLength={2} maxLength={255} placeholder="e.g. Mumbai Art Expo 2026" /></label>
                 <label className="dashboard-event-wide">Description<textarea name="description" required minLength={10} rows={4} placeholder="Describe the exhibition, its artists and what visitors can expect." /></label>
                 <label>Venue<span className="dashboard-event-input-icon"><MapPin size={15} /><input name="venue" required minLength={2} maxLength={255} placeholder="Venue name" /></span></label>
                 <div className="dashboard-event-wide event-places">
                   <span className="event-places-label">States *</span>
-                  <select value="" onChange={(change) => { const value = change.target.value; if (value) setStates((current) => current.includes(value) ? current : [...current, value]) }}>
+                  <select value="" onChange={(change) => addState(change.target.value)}>
                     <option value="">{states.length ? 'Add another state…' : 'Select a state…'}</option>
                     {[...indianStates, ...indianUnionTerritories].filter((state) => !states.includes(state)).map((state) => <option key={state}>{state}</option>)}
                   </select>
-                  {states.length > 0 && <div className="event-chips">{states.map((state) => <button type="button" key={state} onClick={() => { setStates((current) => current.filter((item) => item !== state)); setCities((current) => current.filter((city) => !(citiesByState[state] ?? []).includes(city) || states.some((other) => other !== state && (citiesByState[other] ?? []).includes(city)))) }} aria-label={`Remove ${state}`}>{state} ×</button>)}</div>}
+                  {states.length > 0 && <div className="event-chips">{states.map((state) => <button type="button" key={state} onClick={() => removeState(state)} aria-label={`Remove ${state}`}>{state} ×</button>)}</div>}
                 </div>
                 <div className="dashboard-event-wide event-places">
                   <span className="event-places-label">Cities *</span>
@@ -253,23 +342,69 @@ export function EventUploader() {
             </section>
 
             <section className="dashboard-event-form-section">
-              <div className="dashboard-event-section-heading"><span className="is-blue"><Store size={18} /></span><div><p className="eyebrow">02 · Stall slots &amp; pricing</p><h2>How many stalls are available?</h2><p>Set the number of slots for each stall type. Prices are the same ones artists see on the Book a Stall page.</p></div></div>
-              {stallTypes.length === 0 ? <p className="event-stalls-empty">No stall types found. Add them from the Stalls dashboard first.</p> : (
-                <div className="event-stalls">
-                  {stallTypes.map((type) => (
-                    <label key={type.id} className="event-stall-row">
-                      <span><strong>{type.name}</strong><small>{type.widthM}×{type.depthM} m · {type.category.toLowerCase()}{type.includes ? ` · ${type.includes}` : ''}</small></span>
-                      <em>{rupees(type.price)}<small>+ {Number(type.taxRate)}% GST</small></em>
-                      <input type="number" min={0} max={500} inputMode="numeric" aria-label={`Slots for ${type.name}`} value={slots[type.id] ?? 0} onChange={(change) => setSlots((current) => ({ ...current, [type.id]: Math.max(0, Math.min(500, Number(change.target.value) || 0)) }))} />
-                    </label>
-                  ))}
-                  <p className="event-stalls-total"><b>{totalSlots}</b> slots available · potential stall revenue <b>{rupees(potential)}</b> (before GST)</p>
+              <div className="dashboard-event-section-heading"><span className="is-blue"><Store size={18} /></span><div><p className="eyebrow">State-wise pricing</p><h2>02 · Stall Slots &amp; State-Wise Pricing</h2><p>Enter a different base price and slot count for each selected state. GST is calculated at 18%.</p></div></div>
+              {stallTypesLoading ? <p className="event-stalls-empty" role="status">Loading available stall categories…</p> : stallTypesError ? (
+                <div className="event-stalls-load-error" role="alert"><span>Could not load stall categories: {stallTypesError}</span><button type="button" onClick={() => setStallTypesRetry((current) => current + 1)}>Retry</button></div>
+              ) : stallTypes.length === 0 ? <p className="event-stalls-empty">No stall types found. Add them from the Stalls dashboard first.</p> : (
+                <div className="event-stalls-studio">
+                  <div className="dashboard-event-template">
+                    <div className="dashboard-event-template-heading">
+                      <div><h3>Default template <span>Optional</span></h3><p>Enter a starting price and slot count, then copy them to every selected state. You can still change each state below.</p></div>
+                      <button type="button" disabled={!states.length} onClick={applyTemplateToStates}>Apply to selected states</button>
+                    </div>
+                    <div className="dashboard-event-template-grid">
+                      {stallTypes.map((type) => (
+                        <article key={type.id} className="dashboard-event-template-row">
+                          <div><strong>{type.name}</strong><small>{type.widthM} × {type.depthM} m · {type.category.toLowerCase()}</small></div>
+                          <label>Base price (₹)<input type="number" min={0} max={10000000} step={1} value={templateRates[type.id]?.price ?? ''} onChange={(change) => updateTemplateRate(type.id, { price: change.target.value })} placeholder="Enter price" /></label>
+                          <label>Slots<input type="number" min={0} max={500} step={1} value={templateRates[type.id]?.slots ?? 0} onChange={(change) => updateTemplateRate(type.id, { slots: Math.max(0, Math.min(500, Number(change.target.value) || 0)) })} /></label>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="dashboard-event-rate-summary" aria-live="polite">
+                    <div><span>States</span><strong>{states.length}</strong></div>
+                    <div><span>Total slots</span><strong>{totalSlots}</strong></div>
+                    <div><span>Potential revenue before GST</span><strong>{rupees(potential)}</strong></div>
+                    <div><span>Estimated GST (18%)</span><strong>{rupees(potentialGst)}</strong></div>
+                    <div><span>Potential total including GST</span><strong>{rupees(potentialWithGst)}</strong></div>
+                  </div>
+
+                  {states.length === 0 ? (
+                    <p className="event-stalls-empty">Select one or more states in Exhibition Details to add state-wise rates and stall slots.</p>
+                  ) : (
+                    <div className="dashboard-event-state-list">
+                      {states.map((state) => (
+                        <article className="dashboard-event-state-card" key={state}>
+                          <header><h3>{state}</h3><span>{stateTotalSlots(state)} slots · {rupees(statePotential(state))} before GST</span></header>
+                          <div className="dashboard-event-state-rates">
+                            {stallTypes.map((type) => {
+                              const rate = stateRates[state]?.[type.id] ?? { price: '', slots: 0 }
+                              const basePrice = Number(rate.price) || 0
+                              const tax = basePrice * gstRate / 100
+                              return (
+                                <article className="dashboard-event-rate-card" key={type.id}>
+                                  <div className="dashboard-event-rate-title"><strong>{type.name}</strong><small>{type.widthM} × {type.depthM} m · {type.category.toLowerCase()}{type.includes ? ` · ${type.includes}` : ''}</small></div>
+                                  <label>Base price (₹)<input type="number" min={0} max={10000000} step={1} inputMode="numeric" aria-label={`${type.name} base price in ${state}`} value={rate.price} onChange={(change) => updateStateRate(state, type.id, { price: change.target.value })} placeholder="Enter price" /></label>
+                                  {rate.price.trim()
+                                    ? <p className="dashboard-event-gst-preview"><span>GST (18%) <b>{rupees(tax)}</b></span><span>Total <b>{rupees(basePrice + tax)}</b></span></p>
+                                    : <p className="dashboard-event-gst-empty">GST and total will appear after you enter a base price.</p>}
+                                  <label>Available slots<input type="number" min={0} max={500} step={1} inputMode="numeric" aria-label={`${type.name} available slots in ${state}`} value={rate.slots} onChange={(change) => updateStateRate(state, type.id, { slots: Math.max(0, Math.min(500, Number(change.target.value) || 0)) })} /></label>
+                                </article>
+                              )
+                            })}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </section>
 
             <section className="dashboard-event-form-section">
-              <div className="dashboard-event-section-heading"><span className="is-blue"><ImagePlus size={18} /></span><div><p className="eyebrow">03 · Event gallery</p><h2>Add images and videos</h2><p>Choose files that represent the venue, artworks or exhibition experience.</p></div></div>
+              <div className="dashboard-event-section-heading"><span className="is-blue"><ImagePlus size={18} /></span><div><p className="eyebrow">Media</p><h2>03 · Event Gallery</h2><p>Choose files that represent the venue, artworks or exhibition experience.</p></div></div>
               <label className="dashboard-event-upload">
                 <UploadCloud size={24} />
                 <strong>Choose event images or videos</strong>

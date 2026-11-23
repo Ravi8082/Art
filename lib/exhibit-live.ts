@@ -1,25 +1,36 @@
 import type { ExhibitInfo } from '@/lib/api'
-import { exhibitPricing, type PricingTable } from '@/lib/demo-exhibit'
+import type { PublicEvent } from '@/lib/api'
+import { exhibitPricing, type PricingTable } from '@/lib/exhibit-content'
 
 const inr = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 const monthYear = (value: string | null) => value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'To be announced'
-const size = (t: { widthM: number; depthM: number }) => `${+t.widthM}m x ${+t.depthM}m (${+(t.widthM * t.depthM).toFixed(1)} SQM)`
+const size = (t: { widthM: number; depthM: number }) => `${+t.widthM}m × ${+t.depthM}m (${+(t.widthM * t.depthM).toFixed(1)} SQM)`
 
-export function buildPricing(info: ExhibitInfo | null): { standard: PricingTable | null; premium: PricingTable | null } {
+export function buildPricing(info: ExhibitInfo | null, events: PublicEvent[] = []): { standard: PricingTable | null; premium: PricingTable | null } {
   if (!info) return { standard: null, premium: null }
   const from = monthYear(info.window.startsAt)
   const to = monthYear(info.window.endsAt)
-  const rows = (types: ExhibitInfo['stallTypes']) => types.map((t) => ({
-    from, to, size: `${t.name} · ${size(t)}`,
-    price: `${inr(t.price)} + ${+t.taxRate}% GST`,
-    includes: t.includes || 'Details shared at booking',
-  }))
+  const rows = (types: ExhibitInfo['stallTypes']) => types.map((t) => {
+    const tax = Math.round(Number(t.price) * Number(t.taxRate) / 100)
+    return {
+      from, to, size: `${t.name} · ${size(t)}`,
+      price: `${inr(t.price)} + ${inr(tax)} GST = ${inr(Number(t.price) + tax)}`,
+      includes: t.includes || 'Details shared at booking',
+    }
+  })
   const individual = info.stallTypes.filter((t) => t.category === 'INDIVIDUAL')
   const others = info.stallTypes.filter((t) => t.category !== 'INDIVIDUAL')
-  const cta = { label: 'Book Stall Now', href: '/book-your-stall' }
+  const cta = { label: 'Book This Stall', href: '/book-stall' }
+  const upcomingEvents = events
+    .filter((event) => new Date(event.endsAt).getTime() >= Date.now())
+  const upcomingEditions = (info.window.upcoming > 0 ? upcomingEvents.slice(0, info.window.upcoming) : upcomingEvents)
+    .map((event) => [event.city || event.venue, event.title].filter(Boolean).join(' — '))
+  const editionNote = upcomingEditions.length
+    ? `Dates ${from} – ${to} apply to: ${upcomingEditions.join('; ')}.`
+    : `Dates ${from} – ${to} apply to upcoming editions listed in the booking system.`
   return {
-    standard: individual.length ? { ...exhibitPricing[0], title: 'Stall Rates For', accent: 'Individual Artists', note: info.window.upcoming ? `Applies to ${info.window.upcoming} upcoming exhibition${info.window.upcoming > 1 ? 's' : ''}` : undefined, rows: rows(individual), cta } : null,
-    premium: others.length ? { ...exhibitPricing[1], title: 'Stall Rates For', accent: 'Groups & Galleries', rows: rows(others), cta } : null,
+    standard: individual.length ? { ...exhibitPricing[0], note: editionNote, rows: rows(individual), cta } : null,
+    premium: others.length ? { ...exhibitPricing[1], note: editionNote, rows: rows(others), cta } : null,
   }
 }
 
@@ -28,9 +39,9 @@ const count = (value: number) => Number(value).toLocaleString('en-IN')
 export function buildStats(info: ExhibitInfo) {
   const s = info.stats
   return [
-    { icon: 'artwork', label: 'Stalls Booked', value: count(s.stallsBooked), text: `${count(s.openStalls)} stall slots still open across upcoming exhibitions.` },
-    { icon: 'venue', label: 'Exhibitions', value: count(s.events), text: 'Published and upcoming exhibitions on The Haat of Art.' },
-    { icon: 'audience', label: 'Visitors Registered', value: count(s.visitors), text: 'Visitors who have registered for free entry passes.' },
-    { icon: 'network', label: 'Artists On Platform', value: count(s.artists), text: 'Approved artist profiles showcased on the website.' },
+    { icon: 'network', label: 'Exhibitors', value: '2,500+', text: 'Artists and exhibitors have taken part in our exhibitions.' },
+    { icon: 'audience', label: 'Art Lovers & Buyers', value: '77,000+', text: 'Visitors and buyers reached through our exhibitions.' },
+    { icon: 'artwork', label: 'Artworks Sold', value: '₹17.60 Cr+', text: 'Cumulative artwork sales.' },
+    { icon: 'venue', label: 'Prime Stalls Open', value: count(s.openStalls), text: 'Live availability across upcoming editions' },
   ]
 }

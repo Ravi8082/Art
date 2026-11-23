@@ -3,15 +3,29 @@
 // frontend's own origin and Next forwards it to the backend. The session cookie therefore belongs to the
 // frontend host, and the backend's CSRF Origin check sees the frontend origin.
 const backendUrl = process.env.BACKEND_API_URL?.trim().replace(/\/+$/, '')
+const imageApiUrl = new URL(
+  backendUrl || process.env.NEXT_PUBLIC_BACKEND_API_URL?.trim() || 'http://localhost:4000',
+)
+const imageApiPath = imageApiUrl.pathname.replace(/\/+$/, '')
 
 const nextConfig = {
+  experimental: {
+    agentUpgrade: 'security',
+  },
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
+  devIndicators: false,
   typescript: {
     ignoreBuildErrors: false,
   },
   images: {
-    unoptimized: true,
+    unoptimized: false,
+    remotePatterns: [{
+      protocol: imageApiUrl.protocol.slice(0, -1),
+      hostname: imageApiUrl.hostname,
+      port: imageApiUrl.port,
+      pathname: `${imageApiPath}/api/**`,
+    }],
   },
   // With the proxy enabled and no explicit public URL, browser code uses relative /api/... URLs.
   env: backendUrl && process.env.NEXT_PUBLIC_BACKEND_API_URL === undefined ? { NEXT_PUBLIC_BACKEND_API_URL: '' } : {},
@@ -27,7 +41,7 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
         ],
       },
     ]

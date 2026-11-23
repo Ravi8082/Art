@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import Link from 'next/link'
-import type { AboutPartner, AboutSection, AboutState, AboutTeamMember } from '@/lib/api'
+import type { AboutEcosystemCard, AboutMetric, AboutMilestone, AboutPartner, AboutSection, AboutSettings, AboutState, AboutTeamMember } from '@/lib/api'
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const maxFileBytes = 50 * 1024 * 1024
@@ -16,7 +16,8 @@ async function readError(response: Response) {
 }
 
 async function api(path: string, init: RequestInit = {}) {
-  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: 'include', ...init })
+  const adminPath = path.startsWith('/api/about/') ? path.replace('/api/about/', '/api/admin/about/') : path
+  const response = await fetch(`${apiBaseUrl}${adminPath}`, { credentials: 'include', ...init })
   if (!response.ok) throw new Error(await readError(response))
   return response
 }
@@ -42,6 +43,22 @@ function fileToCroppedBlob(file: File, aspect: number): Promise<Blob> {
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the image file')) }
     img.src = url
+  })
+}
+
+function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new window.Image()
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Could not read the image file'))
+    }
+    image.src = url
   })
 }
 
@@ -107,12 +124,13 @@ function ImageSlot({ url, alt, busy, onPick, onRemove }: { url: string | null; a
   )
 }
 
-type SectionForm = { title: string; subtitle: string; bodyHtml: string; visible: boolean; imagePosition: 'left' | 'right'; imageUrl: string | null }
+type SectionForm = { title: string; subtitle: string; bodyHtml: string; visible: boolean; imagePosition: 'left' | 'right'; imageUrl: string | null; linkUrl: string; buttonLabel: string }
 
 function sectionForm(section?: AboutSection): SectionForm {
   return {
     title: section?.title ?? '', subtitle: section?.subtitle ?? '', bodyHtml: section?.bodyHtml ?? '',
     visible: section ? Number(section.visible) === 1 : true, imagePosition: section?.imagePosition ?? 'right', imageUrl: section?.imageUrl ?? null,
+    linkUrl: section?.linkUrl ?? '', buttonLabel: section?.buttonLabel ?? '',
   }
 }
 
@@ -124,6 +142,10 @@ export function AboutPageManager() {
   const [dirty, setDirty] = useState(false)
   const [history, setHistory] = useState<{ id: number; publishedBy: string; createdAt: string }[]>([])
   const [forms, setForms] = useState<Record<string, SectionForm>>({})
+  const [settingsForm, setSettingsForm] = useState<AboutSettings | null>(null)
+  const [metricForms, setMetricForms] = useState<AboutMetric[]>([])
+  const [milestoneForms, setMilestoneForms] = useState<AboutMilestone[]>([])
+  const [ecosystemForms, setEcosystemForms] = useState<AboutEcosystemCard[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -135,6 +157,10 @@ export function AboutPageManager() {
     setPublishedAt(data.publishedAt)
     setDirty(data.dirty)
     setForms(Object.fromEntries(data.state.sections.map((section) => [section.sectionKey, sectionForm(section)])))
+    setSettingsForm(data.state.settings ? { ...data.state.settings, storyTags: [...data.state.settings.storyTags] } : null)
+    setMetricForms(data.state.metrics)
+    setMilestoneForms(data.state.milestones)
+    setEcosystemForms(data.state.ecosystemCards)
     const historyResponse = await api('/api/about/history', { cache: 'no-store' })
     setHistory((await historyResponse.json() as { history: typeof history }).history)
   }, [])
@@ -167,14 +193,92 @@ export function AboutPageManager() {
 
   const setForm = (key: string, patch: Partial<SectionForm>) => setForms((current) => ({ ...current, [key]: { ...current[key], ...patch } }))
 
+  function saveSettings(patch: Partial<AboutSettings>, success = 'About page settings saved.') {
+    void run(async () => {
+      await api('/api/about/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+    }, success)
+  }
+
+  function updateMetric(id: number, patch: Partial<AboutMetric>) {
+    setMetricForms((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item))
+  }
+
+  function saveMetric(metric: AboutMetric) {
+    void run(async () => {
+      const { id, metricKey: _metricKey, ...body } = metric
+      await api(`/api/about/metrics/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    }, 'Metric saved.')
+  }
+
+  function addMetric(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const element = event.currentTarget
+    const form = new FormData(event.currentTarget)
+    void run(async () => {
+      await api('/api/about/metrics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: form.get('value'), label: form.get('label'), sublabel: form.get('sublabel') }) })
+      element.reset()
+    }, 'Metric added.')
+  }
+
+  function updateMilestone(id: number, patch: Partial<AboutMilestone>) {
+    setMilestoneForms((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item))
+  }
+
+  function saveMilestone(milestone: AboutMilestone) {
+    void run(async () => {
+      const { id, milestoneKey: _milestoneKey, ...body } = milestone
+      await api(`/api/about/milestones/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    }, 'Milestone saved.')
+  }
+
+  function addMilestone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const element = event.currentTarget
+    void run(async () => {
+      await api('/api/about/milestones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yearRange: form.get('yearRange'), title: form.get('title'), description: form.get('description') }) })
+      element.reset()
+    }, 'Milestone added.')
+  }
+
+  function updateEcosystemCard(id: number, patch: Partial<AboutEcosystemCard>) {
+    setEcosystemForms((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item))
+  }
+
+  function saveEcosystemCard(card: AboutEcosystemCard) {
+    void run(async () => {
+      const { id, cardKey: _cardKey, ...body } = card
+      await api(`/api/about/ecosystem-cards/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    }, 'Ecosystem card saved.')
+  }
+
+  function addEcosystemCard(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const element = event.currentTarget
+    void run(async () => {
+      await api('/api/about/ecosystem-cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: form.get('title'), lead: form.get('lead'), bodyHtml: form.get('bodyHtml') }) })
+      element.reset()
+    }, 'Ecosystem card added.')
+  }
+
   function saveSection(key: string) {
     const form = forms[key]
     void run(async () => {
+      const payload: Record<string, unknown> = {
+        title: form.title,
+        subtitle: form.subtitle,
+        visible: form.visible,
+        imagePosition: form.imagePosition,
+      }
+      if (!['features', 'hero', 'team', 'partners', 'cta'].includes(key)) payload.bodyHtml = form.bodyHtml || null
+      if (key === 'cta') {
+        payload.linkUrl = form.linkUrl.trim() || null
+        payload.buttonLabel = form.buttonLabel.trim() || null
+      }
       await api(`/api/about/sections/${key}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(key === 'hero'
-          ? { title: form.title, subtitle: form.subtitle, visible: form.visible }
-          : { title: form.title, bodyHtml: form.bodyHtml || null, visible: form.visible, imagePosition: form.imagePosition }),
+        body: JSON.stringify(payload),
       })
     }, `${key[0].toUpperCase()}${key.slice(1)} section saved as draft.`)
   }
@@ -197,7 +301,10 @@ export function AboutPageManager() {
     const element = event.currentTarget
     const form = new FormData(element)
     void run(async () => {
-      await api('/api/about/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.get('name'), designation: form.get('designation'), bio: form.get('bio') }) })
+      await api('/api/about/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        name: form.get('name'), role: form.get('designation'),
+        badgeLabel: form.get('badgeLabel'), isFeaturedMentor: form.get('isFeaturedMentor') === 'on', bio: form.get('bio'),
+      }) })
       element.reset()
     }, 'Team member added to the draft.')
   }
@@ -210,8 +317,10 @@ export function AboutPageManager() {
 
   function uploadTeamPhoto(member: AboutTeamMember, file: File) {
     void run(async () => {
-      const blob = await fileToCroppedBlob(file, 1)
-      await api(`/api/about/team/${member.id}/photo`, { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob })
+      if (file.size > maxFileBytes) throw new Error('Portrait image must be 50 MB or smaller.')
+      const { width, height } = await getImageDimensions(file)
+      if (width < 400 || height < 400) throw new Error('Upload a clear portrait that is at least 400 × 400 px. 800 × 1000 px or larger is recommended.')
+      await api(`/api/about/team/${member.id}/photo`, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
     }, 'Team photo updated.')
   }
 
@@ -233,7 +342,9 @@ export function AboutPageManager() {
     const form = new FormData(element)
     const website = String(form.get('websiteUrl') ?? '').trim()
     void run(async () => {
-      await api('/api/about/partners', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.get('name'), category: form.get('category'), websiteUrl: website || null }) })
+      await api('/api/about/partners', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        name: form.get('name'), shortCode: form.get('shortCode'), category: form.get('category'), websiteUrl: website || null,
+      }) })
       element.reset()
     }, 'Partner added to the draft.')
   }
@@ -272,7 +383,7 @@ export function AboutPageManager() {
     void run(async () => { await api(`/api/about/restore/${id}`, { method: 'POST' }) }, 'Previous published version restored.')
   }
 
-  function remove(kind: 'team' | 'partners', id: string, success: string) {
+  function remove(kind: 'team' | 'partners' | 'metrics' | 'milestones' | 'ecosystem-cards', id: string | number, success: string) {
     if (!window.confirm('Delete this item permanently?')) return
     void run(async () => { await api(`/api/about/${kind}/${id}`, { method: 'DELETE' }) }, success)
   }
@@ -297,7 +408,7 @@ export function AboutPageManager() {
   const heroForm = forms.hero
   const foundationForm = forms.foundation
   const companyForm = forms.company
-  const heroWords = (heroForm?.title || 'About Us').trim().split(' ')
+  const heroWords = (heroForm?.title ?? '').trim().split(/\s+/).filter(Boolean)
   const heroAccent = heroWords.length > 1 ? heroWords.pop() : ''
 
   return (
@@ -310,7 +421,8 @@ export function AboutPageManager() {
             {dirty ? 'You have unpublished draft changes.' : 'Draft and published content are in sync.'}</p>
         </div>
         <div className="apm-header-actions">
-          <Link className="apm-secondary" href="/about" target="_blank">View on Website</Link>
+          <Link className="apm-secondary" href="/about" target="_blank" rel="noopener noreferrer">View on Website</Link>
+          <Link className="apm-about-link" href="/about" target="_blank" rel="noopener noreferrer">About Us</Link>
           <button type="button" className="apm-publish" disabled={busy || !dirty} onClick={publish}>Publish Changes</button>
         </div>
       </header>
@@ -322,12 +434,119 @@ export function AboutPageManager() {
 
       {state && (
         <>
+          {settingsForm && (
+            <section className="event-form">
+              <h2>About Page Settings</h2>
+              <div className="apm-fields apm-settings-grid">
+                <label>Hero kicker<input value={settingsForm.heroKicker} maxLength={100} onChange={(e) => setSettingsForm({ ...settingsForm, heroKicker: e.target.value })} /></label>
+                <label>Hero title *<input value={settingsForm.heroTitle} maxLength={160} onChange={(e) => setSettingsForm({ ...settingsForm, heroTitle: e.target.value })} /></label>
+                <label>Hero subtitle<input value={settingsForm.heroSubtitle} maxLength={500} onChange={(e) => setSettingsForm({ ...settingsForm, heroSubtitle: e.target.value })} /></label>
+                <label className="apm-check"><input type="checkbox" checked={settingsForm.heroVisible} onChange={(e) => setSettingsForm({ ...settingsForm, heroVisible: e.target.checked })} /> Show hero</label>
+                <label>Our Story label<input value={settingsForm.storyKicker} maxLength={100} onChange={(e) => setSettingsForm({ ...settingsForm, storyKicker: e.target.value })} /></label>
+                <label>Our Story heading<input value={settingsForm.storyHeading} maxLength={160} onChange={(e) => setSettingsForm({ ...settingsForm, storyHeading: e.target.value })} /></label>
+                <label className="apm-wide-field">Our Story narrative<RichText html={settingsForm.storyBodyHtml ?? ''} onChange={(html) => setSettingsForm({ ...settingsForm, storyBodyHtml: html })} /></label>
+                <label className="apm-wide-field">Story tags (one per line)<textarea rows={4} value={settingsForm.storyTags.join('\n')} onChange={(e) => setSettingsForm({ ...settingsForm, storyTags: e.target.value.split(/\r?\n/).slice(0, 12) })} /></label>
+                <label className="apm-check"><input type="checkbox" checked={settingsForm.storyVisible} onChange={(e) => setSettingsForm({ ...settingsForm, storyVisible: e.target.checked })} /> Show Our Story</label>
+                <label>Journey kicker<input value={settingsForm.journeyKicker} maxLength={100} onChange={(e) => setSettingsForm({ ...settingsForm, journeyKicker: e.target.value })} /></label>
+                <label>Journey heading<input value={settingsForm.journeyHeading} maxLength={160} onChange={(e) => setSettingsForm({ ...settingsForm, journeyHeading: e.target.value })} /></label>
+                <label className="apm-check"><input type="checkbox" checked={settingsForm.journeyVisible} onChange={(e) => setSettingsForm({ ...settingsForm, journeyVisible: e.target.checked })} /> Show milestones</label>
+                <label>Ecosystem kicker<input value={settingsForm.ecosystemKicker} maxLength={100} onChange={(e) => setSettingsForm({ ...settingsForm, ecosystemKicker: e.target.value })} /></label>
+                <label>Ecosystem heading<input value={settingsForm.ecosystemHeading} maxLength={160} onChange={(e) => setSettingsForm({ ...settingsForm, ecosystemHeading: e.target.value })} /></label>
+                <label>Ecosystem subtitle<input value={settingsForm.ecosystemSubtitle} maxLength={500} onChange={(e) => setSettingsForm({ ...settingsForm, ecosystemSubtitle: e.target.value })} /></label>
+                <button type="button" disabled={busy} onClick={() => saveSettings({
+                  heroKicker: settingsForm.heroKicker, heroTitle: settingsForm.heroTitle, heroSubtitle: settingsForm.heroSubtitle,
+                  heroVisible: settingsForm.heroVisible, storyKicker: settingsForm.storyKicker, storyHeading: settingsForm.storyHeading,
+                  storyBodyHtml: settingsForm.storyBodyHtml, storyTags: settingsForm.storyTags.filter((tag) => tag.trim()),
+                  storyVisible: settingsForm.storyVisible, journeyKicker: settingsForm.journeyKicker,
+                  journeyHeading: settingsForm.journeyHeading, journeyVisible: settingsForm.journeyVisible,
+                  ecosystemKicker: settingsForm.ecosystemKicker, ecosystemHeading: settingsForm.ecosystemHeading,
+                  ecosystemSubtitle: settingsForm.ecosystemSubtitle,
+                })}>Save About Settings</button>
+              </div>
+            </section>
+          )}
+
+          <section className="event-form">
+            <h2>Impact Metrics</h2>
+            <div className="apm-record-list">
+              {metricForms.map((metric) => (
+                <article className="apm-record-card" key={metric.id}>
+                  <label>Number<input aria-label="Metric value" value={metric.value} maxLength={80} onChange={(e) => updateMetric(metric.id, { value: e.target.value })} /></label>
+                  <label>Label<input aria-label="Metric label" value={metric.label} maxLength={160} onChange={(e) => updateMetric(metric.id, { label: e.target.value })} /></label>
+                  <label>Supporting text<input aria-label="Metric sublabel" value={metric.sublabel} maxLength={200} onChange={(e) => updateMetric(metric.id, { sublabel: e.target.value })} /></label>
+                  <label>Display order<input aria-label="Metric sort order" type="number" min={0} value={metric.sortOrder} onChange={(e) => updateMetric(metric.id, { sortOrder: Number(e.target.value) })} /></label>
+                  <div className="apm-card-actions">
+                    <label className="apm-check"><input type="checkbox" checked={metric.isVisible} onChange={(e) => updateMetric(metric.id, { isVisible: e.target.checked })} /> Show on About Us</label>
+                    <button type="button" disabled={busy} onClick={() => saveMetric(metric)}>Save</button>
+                    <button type="button" className="apm-delete" disabled={busy} onClick={() => remove('metrics', metric.id, 'Metric deleted.')}>Delete</button>
+                  </div>
+                </article>
+              ))}
+              <form className="apm-add-card" onSubmit={addMetric}>
+                <label>Number<input name="value" placeholder="e.g. 18+" maxLength={80} required /></label>
+                <label>Label<input name="label" placeholder="e.g. Years of impact" maxLength={160} required /></label>
+                <label>Supporting text<input name="sublabel" placeholder="Optional" maxLength={200} /></label>
+                <button disabled={busy} type="submit">+ Add Metric</button>
+              </form>
+            </div>
+          </section>
+
+          <section className="event-form">
+            <h2>Journey Milestones</h2>
+            <div className="apm-record-list">
+              {milestoneForms.map((milestone) => (
+                <article className="apm-record-card" key={milestone.id}>
+                  <label>Year or range<input aria-label="Year range" value={milestone.yearRange} maxLength={80} onChange={(e) => updateMilestone(milestone.id, { yearRange: e.target.value })} /></label>
+                  <label>Milestone title<input aria-label="Milestone title" value={milestone.title} maxLength={240} onChange={(e) => updateMilestone(milestone.id, { title: e.target.value })} /></label>
+                  <label>Description<input aria-label="Milestone description" value={milestone.description} onChange={(e) => updateMilestone(milestone.id, { description: e.target.value })} /></label>
+                  <label>Display order<input aria-label="Milestone sort order" type="number" min={0} value={milestone.sortOrder} onChange={(e) => updateMilestone(milestone.id, { sortOrder: Number(e.target.value) })} /></label>
+                  <div className="apm-card-actions">
+                    <label className="apm-check"><input type="checkbox" checked={milestone.isVisible} onChange={(e) => updateMilestone(milestone.id, { isVisible: e.target.checked })} /> Show on About Us</label>
+                    <button type="button" disabled={busy} onClick={() => saveMilestone(milestone)}>Save</button>
+                    <button type="button" className="apm-delete" disabled={busy} onClick={() => remove('milestones', milestone.id, 'Milestone deleted.')}>Delete</button>
+                  </div>
+                </article>
+              ))}
+              <form className="apm-add-card" onSubmit={addMilestone}>
+                <label>Year or range<input name="yearRange" placeholder="e.g. 2020–2024" maxLength={80} required /></label>
+                <label>Milestone title<input name="title" placeholder="Add a title" maxLength={240} required /></label>
+                <label>Description<input name="description" placeholder="Optional" /></label>
+                <button disabled={busy} type="submit">+ Add Milestone</button>
+              </form>
+            </div>
+          </section>
+
+          <section className="event-form">
+            <h2>Artists, Partners & Collectors Cards</h2>
+            <div className="apm-record-list">
+              {ecosystemForms.map((card) => (
+                <article className="apm-record-card" key={card.id}>
+                  <label>Card title<input aria-label="Card title" value={card.title} maxLength={160} onChange={(e) => updateEcosystemCard(card.id, { title: e.target.value })} /></label>
+                  <label>Short summary<input aria-label="Card lead" value={card.lead} maxLength={240} onChange={(e) => updateEcosystemCard(card.id, { lead: e.target.value })} /></label>
+                  <label>Description<textarea aria-label="Card description" value={card.bodyHtml ?? ''} onChange={(e) => updateEcosystemCard(card.id, { bodyHtml: e.target.value })} /></label>
+                  <label>Display order<input aria-label="Card sort order" type="number" min={0} value={card.sortOrder} onChange={(e) => updateEcosystemCard(card.id, { sortOrder: Number(e.target.value) })} /></label>
+                  <div className="apm-card-actions">
+                    <label className="apm-check"><input type="checkbox" checked={card.isVisible} onChange={(e) => updateEcosystemCard(card.id, { isVisible: e.target.checked })} /> Show on About Us</label>
+                    <button type="button" disabled={busy} onClick={() => saveEcosystemCard(card)}>Save</button>
+                    <button type="button" className="apm-delete" disabled={busy} onClick={() => remove('ecosystem-cards', card.id, 'Card deleted.')}>Delete</button>
+                  </div>
+                </article>
+              ))}
+              <form className="apm-add-card" onSubmit={addEcosystemCard}>
+                <label>Card title<input name="title" placeholder="Add a title" maxLength={160} required /></label>
+                <label>Short summary<input name="lead" placeholder="Optional" maxLength={240} /></label>
+                <label>Description<textarea name="bodyHtml" placeholder="Describe this group" /></label>
+                <button disabled={busy} type="submit">+ Add Card</button>
+              </form>
+            </div>
+          </section>
+
           <section className="event-form">
             <h2>1. Hero Section</h2>
             <div className="apm-grid">
               <div className="apm-fields">
-                <label>Title *<input value={heroForm?.title ?? ''} maxLength={160} onChange={(e) => setForm('hero', { title: e.target.value })} placeholder="About Us" /></label>
-                <label>Subtitle<input value={heroForm?.subtitle ?? ''} maxLength={500} onChange={(e) => setForm('hero', { subtitle: e.target.value })} placeholder="A platform where artists, art lovers and opportunities come together." /></label>
+                <label>Title *<input value={heroForm?.title ?? ''} maxLength={160} onChange={(e) => setForm('hero', { title: e.target.value })} placeholder="Enter the About page title" /></label>
+                <label>Subtitle<input value={heroForm?.subtitle ?? ''} maxLength={500} onChange={(e) => setForm('hero', { subtitle: e.target.value })} placeholder="Enter a short subtitle" /></label>
                 <label className="apm-check"><input type="checkbox" checked={heroForm?.visible ?? true} onChange={(e) => setForm('hero', { visible: e.target.checked })} /> Show hero section</label>
                 <button type="button" disabled={busy} onClick={() => saveSection('hero')}>Save hero</button>
               </div>
@@ -336,20 +555,21 @@ export function AboutPageManager() {
                 <ImageSlot url={heroForm?.imageUrl ? `${apiBaseUrl}${heroForm.imageUrl}` : null} alt="Hero banner" busy={busy} onPick={(file) => attachSectionImage('hero', file)} onRemove={() => detachSectionImage('hero')} />
                 <p className="apm-label">Preview</p>
                 <div className="apm-hero-preview" style={heroForm?.imageUrl ? { backgroundImage: `url(${apiBaseUrl}${heroForm.imageUrl})` } : undefined}>
-                  <h3>{heroWords.join(' ')} {heroAccent && <em>{heroAccent}</em>}</h3>
-                  <p>{heroForm?.subtitle || 'A platform where artists, art lovers and opportunities come together.'}</p>
+                  {heroWords.length > 0 && <h3>{heroWords.join(' ')} {heroAccent && <em>{heroAccent}</em>}</h3>}
+                  {heroForm?.subtitle && <p>{heroForm.subtitle}</p>}
                 </div>
               </div>
             </div>
           </section>
 
-          {([['foundation', '2. Foundation Section', foundationForm], ['company', '3. Company Section', companyForm]] as const).map(([key, heading, form]) => (
+          {([['foundation', '2. Our Story', foundationForm], ['company', 'Optional Company Details', companyForm]] as const).map(([key, heading, form]) => (
             <section className="event-form" key={key}>
               <h2>{heading}</h2>
               {form && (
                 <div className="apm-grid">
                   <div className="apm-fields">
                     <label>Title *<input value={form.title} maxLength={160} onChange={(e) => setForm(key, { title: e.target.value })} /></label>
+                    <label>Eyebrow / short label<input value={form.subtitle} maxLength={500} onChange={(e) => setForm(key, { subtitle: e.target.value })} placeholder="Optional" /></label>
                     <label>Content *<RichText html={form.bodyHtml} onChange={(html) => setForm(key, { bodyHtml: html })} /></label>
                     <div className="apm-row">
                       <label className="apm-check"><input type="checkbox" checked={form.visible} onChange={(e) => setForm(key, { visible: e.target.checked })} /> Show section</label>
@@ -370,28 +590,71 @@ export function AboutPageManager() {
             </section>
           ))}
 
+          {([
+            ['vision', 'Our Vision'],
+            ['mission', 'Our Mission'],
+          ] as const).map(([key, heading]) => {
+            const form = forms[key]
+            if (!form) return null
+            return (
+              <section className="event-form" key={key}>
+                <h2>{heading}</h2>
+                <div className="apm-fields">
+                  <label>Title *<input value={form.title} maxLength={160} onChange={(e) => setForm(key, { title: e.target.value })} /></label>
+                  <label>Content *<RichText html={form.bodyHtml} onChange={(html) => setForm(key, { bodyHtml: html })} /></label>
+                  <label className="apm-check"><input type="checkbox" checked={form.visible} onChange={(e) => setForm(key, { visible: e.target.checked })} /> Show section</label>
+                  <button type="button" disabled={busy} onClick={() => saveSection(key)}>Save {key}</button>
+                </div>
+              </section>
+            )
+          })}
+
+          {forms.features && (
+            <section className="event-form">
+              <h2>About Page Features</h2>
+              <div className="apm-fields">
+                <label>Feature labels (one per line)
+                  <textarea rows={4} maxLength={500} value={forms.features.subtitle} onChange={(e) => setForm('features', { subtitle: e.target.value })} placeholder="Add one feature per line" />
+                </label>
+                <label className="apm-check"><input type="checkbox" checked={forms.features.visible} onChange={(e) => setForm('features', { visible: e.target.checked })} /> Show features</label>
+                <button type="button" disabled={busy} onClick={() => saveSection('features')}>Save features</button>
+              </div>
+            </section>
+          )}
+
           <section className="event-form">
             <h2>4. Our Team</h2>
-            <form className="apm-add-row" onSubmit={addTeamMember}>
-              <input name="name" placeholder="Name *" maxLength={120} required />
-              <input name="designation" placeholder="Designation" maxLength={120} />
-              <input name="bio" placeholder="Short bio (optional)" maxLength={1000} />
+            <p className="apm-hint">Add founders, co-founders, mentors, directors, and other leaders here. Active profiles appear on the Home Page and About page. Click a portrait to upload or replace it; use at least 400 × 400 px (800 × 1000 px or larger recommended).</p>
+            <form className="apm-add-card apm-team-add" onSubmit={addTeamMember}>
+              <label>Name<input name="name" placeholder="Required" maxLength={120} required /></label>
+              <label>Role<input name="designation" placeholder="Founder, Mentor…" maxLength={160} /></label>
+              <label>Badge label<input name="badgeLabel" placeholder="Optional" maxLength={120} /></label>
+              <label>Short bio<input name="bio" placeholder="Optional" maxLength={1000} /></label>
+              <label className="apm-check"><input name="isFeaturedMentor" type="checkbox" /> Feature first on Home</label>
               <button disabled={busy} type="submit">+ Add Team Member</button>
             </form>
-            <table className="apm-table">
-              <thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Designation</th><th>Status</th><th>Actions</th></tr></thead>
+            <div className="apm-table-wrap is-team">
+              <table className="apm-table">
+              <thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Role</th><th>Badge</th><th>Bio</th><th>Facebook</th><th>LinkedIn</th><th>Instagram</th><th>Mentor</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {[...state.team].sort((a, b) => a.sortOrder - b.sortOrder).map((member, index) => (
                   <tr key={member.id}>
                     <td>{index + 1}</td>
                     <td>
-                      <label className="apm-photo">
+                      <label className="apm-photo" title={`Upload or replace ${member.name}'s portrait`}>
                         {member.photoUrl ? <img src={`${apiBaseUrl}${member.photoUrl}`} alt={member.name} /> : <i>{member.name.slice(0, 1)}</i>}
-                        <input type="file" accept={imageAccept} hidden disabled={busy} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) uploadTeamPhoto(member, file) }} />
+                        <span className="apm-photo-upload">{member.photoUrl ? 'Replace' : 'Upload'}</span>
+                        <input type="file" accept={imageAccept} aria-label={`Upload photo for ${member.name}`} hidden disabled={busy} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) uploadTeamPhoto(member, file) }} />
                       </label>
                     </td>
                     <td><input defaultValue={member.name} maxLength={120} onBlur={(e) => { if (e.target.value !== member.name) updateTeamMember(member, { name: e.target.value }) }} /></td>
-                    <td><input defaultValue={member.designation} maxLength={120} onBlur={(e) => { if (e.target.value !== member.designation) updateTeamMember(member, { designation: e.target.value }) }} /></td>
+                    <td><input defaultValue={member.role || member.designation} maxLength={160} aria-label={`${member.name} role`} onBlur={(e) => { if (e.target.value !== member.role) updateTeamMember(member, { role: e.target.value }) }} /></td>
+                    <td><input defaultValue={member.badgeLabel} maxLength={120} aria-label={`${member.name} badge`} onBlur={(e) => { if (e.target.value !== member.badgeLabel) updateTeamMember(member, { badgeLabel: e.target.value }) }} /></td>
+                    <td><input defaultValue={member.bio} maxLength={1000} aria-label={`${member.name} bio`} placeholder="Bio" onBlur={(e) => { if (e.target.value !== member.bio) updateTeamMember(member, { bio: e.target.value }) }} /></td>
+                    <td><input defaultValue={member.facebookUrl ?? ''} maxLength={500} aria-label={`${member.name} Facebook URL`} placeholder="Facebook URL" onBlur={(e) => { const value = e.target.value.trim(); if (value !== (member.facebookUrl ?? '')) updateTeamMember(member, { facebookUrl: value || null }) }} /></td>
+                    <td><input defaultValue={member.linkedinUrl ?? ''} maxLength={500} aria-label={`${member.name} LinkedIn URL`} placeholder="LinkedIn URL" onBlur={(e) => { const value = e.target.value.trim(); if (value !== (member.linkedinUrl ?? '')) updateTeamMember(member, { linkedinUrl: value || null }) }} /></td>
+                    <td><input defaultValue={member.instagramUrl ?? ''} maxLength={500} aria-label={`${member.name} Instagram URL`} placeholder="Instagram URL" onBlur={(e) => { const value = e.target.value.trim(); if (value !== (member.instagramUrl ?? '')) updateTeamMember(member, { instagramUrl: value || null }) }} /></td>
+                    <td><button type="button" className={member.isFeaturedMentor ? 'apm-status is-active' : 'apm-status'} disabled={busy} onClick={() => updateTeamMember(member, { isFeaturedMentor: !member.isFeaturedMentor }, 'Featured mentor updated.')}>{member.isFeaturedMentor ? 'Featured' : 'No'}</button></td>
                     <td><button type="button" className={Number(member.active) ? 'apm-status is-active' : 'apm-status'} disabled={busy} onClick={() => updateTeamMember(member, { active: Number(member.active) ? 0 : 1 }, 'Visibility updated.')}>{Number(member.active) ? 'Active' : 'Hidden'}</button></td>
                     <td className="apm-actions">
                       <button type="button" disabled={busy || index === 0} onClick={() => moveTeam(member, -1)} aria-label="Move up">↑</button>
@@ -400,21 +663,40 @@ export function AboutPageManager() {
                     </td>
                   </tr>
                 ))}
-                {!state.team.length && <tr><td colSpan={6} className="apm-empty">No team members yet. Add them above.</td></tr>}
+                {!state.team.length && <tr><td colSpan={12} className="apm-empty">No team members yet. Add real team details and photos here.</td></tr>}
               </tbody>
-            </table>
+              </table>
+            </div>
           </section>
+
+          {(['team', 'partners'] as const).map((key) => {
+            const form = forms[key]
+            if (!form) return null
+            return (
+              <section className="event-form" key={`${key}-heading`}>
+                <h2>{key === 'team' ? 'Team Section Heading' : 'Partner Section Heading'}</h2>
+                <div className="apm-fields">
+                  <label>Title<input value={form.title} maxLength={160} onChange={(e) => setForm(key, { title: e.target.value })} /></label>
+                  <label>Subtitle<input value={form.subtitle} maxLength={500} onChange={(e) => setForm(key, { subtitle: e.target.value })} /></label>
+                  <label className="apm-check"><input type="checkbox" checked={form.visible} onChange={(e) => setForm(key, { visible: e.target.checked })} /> Show section</label>
+                  <button type="button" disabled={busy} onClick={() => saveSection(key)}>Save heading</button>
+                </div>
+              </section>
+            )
+          })}
 
           <section className="event-form">
             <h2>5. Event Partners</h2>
-            <form className="apm-add-row" onSubmit={addPartner}>
-              <input name="name" placeholder="Partner name *" maxLength={160} required />
-              <input name="category" placeholder="Category (Organizer, Media Partner…)" maxLength={120} />
-              <input name="websiteUrl" placeholder="Website URL (optional)" maxLength={500} />
+            <form className="apm-add-card apm-partner-add" onSubmit={addPartner}>
+              <label>Partner name<input name="name" placeholder="Required" maxLength={160} required /></label>
+              <label>Short code<input name="shortCode" placeholder="Optional" maxLength={24} /></label>
+              <label>Category<input name="category" placeholder="e.g. Media Partner" maxLength={120} /></label>
+              <label>Website<input name="websiteUrl" placeholder="Optional link" maxLength={500} /></label>
               <button disabled={busy} type="submit">+ Add Partner</button>
             </form>
-            <table className="apm-table">
-              <thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Category</th><th>Website</th><th>Status</th><th>Actions</th></tr></thead>
+            <div className="apm-table-wrap is-partners">
+              <table className="apm-table">
+              <thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Short code</th><th>Category</th><th>Website</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {[...state.partners].sort((a, b) => a.sortOrder - b.sortOrder).map((partner, index) => (
                   <tr key={partner.id}>
@@ -426,6 +708,7 @@ export function AboutPageManager() {
                       </label>
                     </td>
                     <td><input defaultValue={partner.name} maxLength={160} onBlur={(e) => { if (e.target.value !== partner.name) updatePartner(partner, { name: e.target.value }) }} /></td>
+                    <td><input defaultValue={partner.shortCode} maxLength={24} aria-label={`${partner.name} short code`} onBlur={(e) => { if (e.target.value !== partner.shortCode) updatePartner(partner, { shortCode: e.target.value }) }} /></td>
                     <td><input defaultValue={partner.category} maxLength={120} onBlur={(e) => { if (e.target.value !== partner.category) updatePartner(partner, { category: e.target.value }) }} /></td>
                     <td><input defaultValue={partner.websiteUrl ?? ''} maxLength={500} placeholder="https://…" onBlur={(e) => { const value = e.target.value.trim(); if (value !== (partner.websiteUrl ?? '')) updatePartner(partner, { websiteUrl: value || null }) }} /></td>
                     <td><button type="button" className={Number(partner.active) ? 'apm-status is-active' : 'apm-status'} disabled={busy} onClick={() => updatePartner(partner, { active: Number(partner.active) ? 0 : 1 }, 'Visibility updated.')}>{Number(partner.active) ? 'Active' : 'Hidden'}</button></td>
@@ -436,10 +719,25 @@ export function AboutPageManager() {
                     </td>
                   </tr>
                 ))}
-                {!state.partners.length && <tr><td colSpan={7} className="apm-empty">No partners yet. Add them above.</td></tr>}
+                {!state.partners.length && <tr><td colSpan={8} className="apm-empty">No partners yet. Add them above.</td></tr>}
               </tbody>
-            </table>
+              </table>
+            </div>
           </section>
+
+          {forms.cta && (
+            <section className="event-form">
+              <h2>Partner Call To Action</h2>
+              <div className="apm-fields">
+                <label>Title<input value={forms.cta.title} maxLength={160} onChange={(e) => setForm('cta', { title: e.target.value })} /></label>
+                <label>Subtitle<input value={forms.cta.subtitle} maxLength={500} onChange={(e) => setForm('cta', { subtitle: e.target.value })} /></label>
+                <label>Button label<input value={forms.cta.buttonLabel} maxLength={120} onChange={(e) => setForm('cta', { buttonLabel: e.target.value })} /></label>
+                <label>Button link<input value={forms.cta.linkUrl} maxLength={500} onChange={(e) => setForm('cta', { linkUrl: e.target.value })} placeholder="/contact or https://…" /></label>
+                <label className="apm-check"><input type="checkbox" checked={forms.cta.visible} onChange={(e) => setForm('cta', { visible: e.target.checked })} /> Show call to action</label>
+                <button type="button" disabled={busy} onClick={() => saveSection('cta')}>Save call to action</button>
+              </div>
+            </section>
+          )}
 
           <section className="event-form">
             <h2>6. Publish History</h2>

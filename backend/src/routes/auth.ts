@@ -56,9 +56,6 @@ authRouter.post('/register', otpRequestLimit, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-const staffRoles = new Set(['SUPER_ADMIN', 'ADMIN', 'CONTENT_MANAGER', 'REGISTRATION_MANAGER'])
-// Staff accounts need a second factor (emailed one-time code). Set STAFF_MFA=off only as an emergency escape hatch.
-const staffMfaEnabled = () => process.env.STAFF_MFA !== 'off'
 const issueMfaToken = (id: string) => jwt.sign({ sub: id, purpose: 'mfa' }, secret(), { expiresIn: '5m' })
 
 const MAX_FAILED_LOGINS = 3
@@ -105,19 +102,11 @@ authRouter.post('/login', loginLimit, async (req, res, next) => {
       // After three wrong passwords a code is required, even if the password is now correct.
       if (failures >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
       if (!passwordOk) {
-        await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id).catch(() => undefined)
+        await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id)
         if (failures + 1 >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
       }
     }
     if (!user || !passwordOk || !eligible) return res.status(401).json({ error: 'Invalid credentials or unverified account' })
-    if (staffMfaEnabled()) {
-      const [roleRows] = await pool.query<any[]>('SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=?', [user.id])
-      if (roleRows.some((role) => staffRoles.has(role.name))) {
-        // A code requested moments ago is still valid, so a cooldown error is not fatal.
-        await createOtp(user.id, 'LOGIN', user.email).catch((error: { status?: number }) => { if (error.status !== 429) throw error })
-        return res.status(403).json({ error: 'Staff sign-in needs a verification code. Please sign in from the dashboard login page (/login).', mfaRequired: true, mfaToken: issueMfaToken(user.id) })
-      }
-    }
     setSession(res, user.id)
     res.json({ userId: user.id })
   } catch (error) { next(error) }
@@ -134,7 +123,7 @@ authRouter.post('/login/verify', otpVerifyLimit, async (req, res, next) => {
     } catch { return res.status(401).json({ error: 'Verification expired. Please sign in again.' }) }
     const [rows] = await pool.query<any[]>("SELECT id FROM users WHERE id=? AND status='ACTIVE'", [userId])
     if (!rows[0] || !(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
-    await recordAudit(userId, 'LOGIN_RESET', 'user', userId).catch(() => undefined)
+    await recordAudit(userId, 'LOGIN_RESET', 'user', userId)
     setSession(res, userId)
     res.json({ userId })
   } catch (error) { next(error) }
@@ -175,7 +164,7 @@ authRouter.post('/password-reset/request', otpRequestLimit, async (req, res, nex
     const email = input.email.toLowerCase()
     const [users] = await pool.query<any[]>('SELECT id,status FROM users WHERE email=?', [email])
     const user = users[0]
-    if (!user) return res.status(404).json({ error: 'No account found with this email. Please register first.', notRegistered: true })
+    if (!user) return res.status(404).json({ error:'No account found with this email. Please register first.', notRegistered: true })
     if (user.status === 'ACTIVE') {
       const mail = await createOtp(user.id, 'RESET_PASSWORD', email)
       if (!mail.delivered) console.error('Password reset OTP email could not be delivered', { reason: mail.reason })
@@ -315,5 +304,5 @@ authRouter.get('/me', requireAuth, async (req: AuthRequest, res, next) => { try 
     UNION
     SELECT p.name FROM user_permissions up JOIN permissions p ON p.id=up.permission_id WHERE up.user_id=?
   ) granted_permissions ORDER BY name`, [req.user!.id, req.user!.id]),
-]); res.json({ user: { ...req.user, email: rows[0]?.email ?? '', fullName: rows[0]?.fullName ?? '', avatarUrl: rows[0]?.avatarUrl ?? null, permissions: permissions.map((entry: { name: string }) => entry.name) } }) } catch (error) { next(error) } })
+]); res.json({ user: { ...req.user, isAdmin: req.user!.roles.some((role) => role === 'ADMIN' || role === 'SUPER_ADMIN'), email: rows[0]?.email ?? '', fullName: rows[0]?.fullName ?? '', avatarUrl: rows[0]?.avatarUrl ?? null, permissions: permissions.map((entry: { name: string }) => entry.name) } }) } catch (error) { next(error) } })
 authRouter.post('/revoke-sessions', requireAuth, async (req: AuthRequest, res, next) => { try { await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.user!.id]); res.status(204).end() } catch (error) { next(error) } })

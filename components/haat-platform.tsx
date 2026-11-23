@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
 import { 
-  Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown,
+  Activity, ArrowRight, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown, Newspaper,
   CircleAlert, ClipboardList, FileCheck2, GalleryVerticalEnd, Heart, Image, LayoutDashboard,
-  LogOut, Mail, MapPin, Menu, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, UserPlus, Users, Wallet, X,
+  LogOut, Mail, MapPin, Menu, MessageCircle, QrCode, Search, Settings, ShieldCheck, Store, TicketCheck, UserPlus, Users, Wallet, X,
 } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
@@ -122,7 +122,7 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Team & employees', href: '/dashboard/team', icon: UserPlus },
     { label: 'Visitor reports', href: '/dashboard/visitors', icon: Users },
     { label: 'My profile', href: '/dashboard/profile', icon: Settings },
-    { label: 'Content management', href: '/dashboard/content', icon: BookOpen, group: 'Management' },
+    { label: 'Homepage manager', href: '/dashboard/homepage', icon: BookOpen, group: 'Management' },
     { label: 'Site design (navbar, footer, theme)', href: '/dashboard/site-design', icon: Settings },
     { label: 'Blog approvals', href: '/dashboard/blog-approvals', icon: FileCheck2 },
     { label: 'Artist approvals', href: '/dashboard/artist-approvals', icon: Users },
@@ -132,7 +132,11 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Stall bookings', href: '/dashboard/stalls', icon: Store },
     { label: 'Payments & finance', href: '/dashboard/finance', icon: Wallet },
     { label: 'Enquiries', href: '/dashboard/enquiries', icon: Mail },
+    { label: 'Kalaa leads & chats', href: '/dashboard/concierge', icon: MessageCircle },
     { label: 'Partners & guests', href: '/dashboard/guests', icon: Users },
+    { label: 'Invited Guests & Luminaries', href: '/admin/invited-guests', icon: Users },
+    { label: 'Media, Press & Outdoor Alliances', href: '/admin/media-partners', icon: Newspaper },
+    { label: 'Event Flow & Schedule', href: '/admin/event-flow', icon: CalendarDays },
     { label: 'Public gallery', href: '/gallery', icon: GalleryVerticalEnd },
     { label: 'Public blog', href: '/blog', icon: BookOpen },
     { label: 'Reports & analytics', href: '/dashboard/reports', icon: BarChart3, group: 'Administration' },
@@ -142,6 +146,10 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
   ],
   ADMIN: [
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Homepage manager', href: '/dashboard/homepage', icon: BookOpen, group: 'Management' },
+    { label: 'Invited Guests & Luminaries', href: '/admin/invited-guests', icon: Users, group: 'Management' },
+    { label: 'Media, Press & Outdoor Alliances', href: '/admin/media-partners', icon: Newspaper },
+    { label: 'Event Flow & Schedule', href: '/admin/event-flow', icon: CalendarDays },
     { label: 'Reports & Analytics', href: '/dashboard/reports', icon: Activity },
     { label: 'Finance & Reconciliation', href: '/dashboard/finance', icon: Store },
     { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays },
@@ -150,18 +158,22 @@ const roleNav: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Blog approvals', href: '/dashboard/blog-approvals', icon: BookOpen },
     { label: 'Artist approvals', href: '/dashboard/artist-approvals', icon: Users },
     { label: 'Enquiries', href: '/dashboard/enquiries', icon: Users },
+    { label: 'Kalaa leads & chats', href: '/dashboard/concierge', icon: MessageCircle },
     { label: 'Team & employees', href: '/dashboard/team', icon: UserPlus, group: 'Account' },
     { label: 'Visitor reports', href: '/dashboard/visitors', icon: Users, group: 'Account' },
     { label: 'My profile', href: '/dashboard/profile', icon: Settings },
   ],
   CONTENT_MANAGER: [
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Website Content', href: '/dashboard/content', icon: BookOpen, group: 'Content & design' },
+    { label: 'Homepage manager', href: '/dashboard/homepage', icon: BookOpen, group: 'Content & design' },
     { label: 'Site design', href: '/dashboard/site-design', icon: Settings },
     { label: 'Homepage Media', href: '/dashboard/homepage-media', icon: Image },
     { label: 'About Page', href: '/dashboard/about', icon: GalleryVerticalEnd },
     { label: 'Contact Page', href: '/dashboard/contact-page', icon: Users, group: 'Management' },
     { label: 'Guests & Feedback', href: '/dashboard/guests', icon: Users },
+    { label: 'Invited Guests & Luminaries', href: '/admin/invited-guests', icon: Users },
+    { label: 'Media, Press & Outdoor Alliances', href: '/admin/media-partners', icon: Newspaper },
+    { label: 'Event Flow & Schedule', href: '/admin/event-flow', icon: CalendarDays },
     { label: 'Exhibitions', href: '/dashboard/events', icon: CalendarDays, group: 'Events' },
     { label: 'My profile', href: '/dashboard/profile', icon: Settings, group: 'Account' },
   ],
@@ -207,7 +219,6 @@ const actions: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'Create exhibition', href: '/dashboard/events', icon: CalendarDays, tone: 'coral' },
     { label: 'Review applications', href: '/dashboard/bookings', icon: FileCheck2, tone: 'blue' },
     { label: 'Manage stalls', href: '/dashboard/stalls', icon: Store, tone: 'green' },
-    { label: 'Update website content', href: '/dashboard/content', icon: BookOpen, tone: 'violet' },
     { label: 'Manage users & roles', href: '/dashboard/users', icon: ShieldCheck, tone: 'violet' },
     { label: 'Review blog submissions', href: '/dashboard/blog-approvals', icon: FileCheck2, tone: 'coral' },
     { label: 'Approve artist profiles', href: '/dashboard/artist-approvals', icon: Users, tone: 'blue' },
@@ -223,7 +234,6 @@ const actions: Record<DashboardRole, { label: string; href: string; icon: typeof
     { label: 'View enquiries', href: '/dashboard/enquiries', icon: Users, tone: 'violet' },
   ],
   CONTENT_MANAGER: [
-    { label: 'Edit website pages', href: '/dashboard/content', icon: BookOpen, tone: 'coral' },
     { label: 'Change navbar, footer & theme', href: '/dashboard/site-design', icon: Settings, tone: 'violet' },
     { label: 'Upload homepage media', href: '/dashboard/homepage-media', icon: Image, tone: 'blue' },
     { label: 'Update About page', href: '/dashboard/about', icon: GalleryVerticalEnd, tone: 'green' },
@@ -449,7 +459,7 @@ export function HaatPlatform({ redirectToDashboard = false }: { redirectToDashbo
           ? '/artist/bookings'
           : role === 'VISITOR'
             ? '/dashboard/passes'
-            : '/dashboard/content'
+            : '/dashboard/homepage'
 
   return (
     <div className={`role-shell role-theme-${role.toLowerCase().replace(/_/g, '-')}`}>
@@ -935,14 +945,13 @@ function ContentManagerOverview({
   const partners = (overview?.partners ?? []).filter(matches)
   const activity = (overview?.recentActivity ?? []).filter(matches)
   const quickActions = [
-    { label: 'Edit Website Pages', href: '/dashboard/content', icon: BookOpen, tone: 'coral' },
+    { label: 'Manage Homepage', href: '/dashboard/homepage', icon: BookOpen, tone: 'coral' },
     { label: 'Upload Banner', href: '/dashboard/homepage-media', icon: Image, tone: 'blue' },
-    { label: 'Manage Artists', href: '/dashboard/content', icon: Users, tone: 'green' },
+    { label: 'Manage Artists', href: '/dashboard/artist-approvals', icon: Users, tone: 'green' },
     { label: 'Create Blog Post', href: '/dashboard/blog-approvals', icon: FileCheck2, tone: 'violet' },
     { label: 'Manage Partners', href: '/dashboard/about', icon: GalleryVerticalEnd, tone: 'amber' },
     { label: 'Update Contact Info', href: '/dashboard/contact-page', icon: Mail, tone: 'blue' },
     { label: 'Manage Exhibitions', href: '/dashboard/events', icon: CalendarDays, tone: 'coral' },
-    { label: 'Open Content Workspace', href: '/dashboard/content', icon: Settings, tone: 'violet' },
   ].filter((action) => !query || action.label.toLowerCase().includes(query))
   const altCoverage = overview?.altText.total
     ? Math.round((overview.altText.described / overview.altText.total) * 100)
@@ -952,14 +961,14 @@ function ContentManagerOverview({
     <div className="content-manager-overview">
       <section className="content-manager-top-grid">
         <div className="role-panel content-manager-pages">
-          <div className="role-panel-heading"><div><p className="role-eyebrow">Content management</p><h2>Website Page Management</h2></div><Link href="/dashboard/content" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Content management</p><h2>Website Page Management</h2></div><Link href="/dashboard/homepage" className="role-panel-link">Manage homepage <ArrowRight size={12} /></Link></div>
           <div className="content-page-table">
             {pages.map((page, index) => <div className="content-page-row" key={page.title}>
               <span className="content-page-number">{String(index + 1).padStart(2, '0')}</span>
               <strong>{page.title}</strong>
               <span className="content-live-status" data-status={page.status}>{page.status}</span>
               <span className="content-page-updated">{page.createdAt ? `Updated ${formatDate(page.createdAt)}` : 'No publish record'}</span>
-              <Link href={page.title === 'Home Page' ? '/dashboard/content' : page.title === 'About Us' ? '/dashboard/about' : page.title === 'Exhibitions' ? '/dashboard/events' : page.title === 'Gallery' ? '/dashboard/homepage-media' : '/dashboard/contact-page'}>Edit</Link>
+              <Link href={page.title === 'Home Page' ? '/dashboard/homepage' : page.title === 'About Us' ? '/dashboard/about' : page.title === 'Exhibitions' ? '/dashboard/events' : page.title === 'Gallery' ? '/dashboard/homepage-media' : '/dashboard/contact-page'}>Edit</Link>
             </div>)}
             {!pages.length && <p className="role-empty">{query ? 'No pages match your search.' : 'No page data is available.'}</p>}
           </div>
@@ -1006,7 +1015,7 @@ function ContentManagerOverview({
           </div>
         </div>
         <div className="role-panel">
-          <div className="role-panel-heading"><div><p className="role-eyebrow">Latest updates</p><h2>Content Activity</h2></div><Link href="/dashboard/content" className="role-panel-link">View all <ArrowRight size={12} /></Link></div>
+          <div className="role-panel-heading"><div><p className="role-eyebrow">Latest updates</p><h2>Content Activity</h2></div></div>
           <ContentDashboardList items={activity} empty={query ? 'No activity matches your search.' : 'Recent content changes will appear here.'} />
         </div>
         <div className="role-panel">
@@ -1066,7 +1075,6 @@ function AdminDashboardOverview({
     { label: 'Visitor Registrations', href: '/dashboard/check-in', icon: QrCode, tone: 'blue' },
     { label: 'View Enquiries', href: '/dashboard/enquiries', icon: Mail, tone: 'violet' },
     { label: 'Review Blogs', href: '/dashboard/blog-approvals', icon: BookOpen, tone: 'red' },
-    { label: 'Content Management', href: '/dashboard/content', icon: FileCheck2, tone: 'cyan' },
     { label: 'Reports & Analytics', href: '/dashboard/reports', icon: BarChart3, tone: 'green' },
   ]
   return (

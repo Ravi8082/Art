@@ -27,7 +27,11 @@ type VisitorPass = {
   endsAt: string
   checkedInAt: string | null
   qrData: string | null
-  status: string
+  status: 'Revoked' | 'Used' | 'Payment pending' | 'Active'
+  passTier: 'FREE' | 'PAID'
+  quantity: number
+  paymentStatus: 'NOT_REQUIRED' | 'PENDING' | 'PAID'
+  passCode: string | null
 }
 type NotificationPreferences = { announcements: boolean; transactional: boolean }
 
@@ -174,10 +178,10 @@ function VisitorPassCard({ pass }: { pass: VisitorPass }) {
 
   return (
     <article className="visitor-pass-card">
-      <div className="visitor-pass-card-title"><div><p className="role-eyebrow">The Haat of Art</p><h3>{pass.title}</h3><span>{dateLabel(pass.startsAt)}{pass.city ? ` · ${pass.city}` : ''}</span></div><span className={`visitor-pass-status ${pass.status === 'Active' ? 'active' : ''}`}>{pass.status}</span></div>
+      <div className="visitor-pass-card-title"><div><p className="role-eyebrow">The Haat of Art</p><h3>{pass.title}</h3><span>{dateLabel(pass.startsAt)}{pass.city ? ` · ${pass.city}` : ''}</span>{pass.passCode && <small>{pass.passCode} · {pass.quantity} {pass.quantity === 1 ? 'pass' : 'passes'}</small>}</div><span className={`visitor-pass-status ${pass.status === 'Active' ? 'active' : ''}`}>{pass.status}</span></div>
       <div className="visitor-pass-body">
         <div className="visitor-qr-frame">{qrImage ? <img src={qrImage} alt={`QR entry pass for ${pass.title}`} /> : pass.qrData ? <span className="role-spinner" /> : <span>Pass unavailable</span>}</div>
-        <div><p><CalendarDays size={14} /> {dateLabel(pass.startsAt)}</p><p><MapPin size={14} /> {[pass.venue, pass.city].filter(Boolean).join(' · ') || 'Venue to be announced'}</p>{pass.checkedInAt && <p><Check size={14} /> Checked in {dateLabel(pass.checkedInAt)}</p>}<small>Scan with Google Lens or the website check-in scanner. It can only be checked in once.</small>{pass.qrData && <Link href={`/visitor/pass/${encodeURIComponent(pass.qrData)}`} className="visitor-pass-info-link" target="_blank">View pass details</Link>}{qrError && <p className="role-access-validation" role="alert">{qrError}</p>}</div>
+        <div><p><CalendarDays size={14} /> {dateLabel(pass.startsAt)}</p><p><MapPin size={14} /> {[pass.venue, pass.city].filter(Boolean).join(' · ') || 'Venue to be announced'}</p>{pass.checkedInAt && <p><Check size={14} /> Checked in {dateLabel(pass.checkedInAt)}</p>}{pass.paymentStatus === 'PENDING' ? <small>VIP payment is not enabled yet. This reservation QR cannot be used for entry until payment is confirmed.</small> : <small>Scan with Google Lens or the website check-in scanner. It can only be checked in once.</small>}{pass.qrData && <Link href={`/visitor/pass/${encodeURIComponent(pass.qrData)}`} className="visitor-pass-info-link" target="_blank">View pass details</Link>}{qrError && <p className="role-access-validation" role="alert">{qrError}</p>}</div>
       </div>
     </article>
   )

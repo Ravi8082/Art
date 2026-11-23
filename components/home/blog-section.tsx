@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { demoBlogs } from '@/lib/demo-home-content'
 import { SafeImage } from './safe-image'
 import { SectionHeading } from './section-heading'
 
@@ -12,14 +11,13 @@ function fmt(value?: string) {
 }
 
 export function BlogSection({ items }: { items: BlogCard[] }) {
-  const posts = items.length ? items : demoBlogs.map((b) => ({ ...b, href: '/blog' }))
   return (
     <div className="th-spot-main">
       <SectionHeading before="In the" accent="Spotlight" subtitle="Stories, insights and inspiration from the world of art." cta={{ label: 'View All Blogs', href: '/blog' }} />
       <div className="th-blogs">
-        {posts.slice(0, 3).map((post, i) => (
+        {items.slice(0, 3).map((post) => (
           <Link className="th-blog" href={post.href} key={post.id}>
-            <SafeImage src={post.image} alt={post.title} fallback={demoBlogs[i % 3].image} />
+            <SafeImage src={post.image} alt={post.title} fallback="/media/exhibition-gallery.jpeg" />
             <div>
               <b>{post.title}</b>
               <small>{fmt(post.date)}{post.readTime ? ` • ${post.readTime}` : ''}</small>

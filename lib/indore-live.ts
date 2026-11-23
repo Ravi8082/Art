@@ -1,4 +1,4 @@
-import { indoreEvent, indoreInfo } from '@/lib/demo-indore'
+import { isPlaceholderContent } from '@/lib/content-quality'
 
 export type LiveEvent = {
   slug: string
@@ -9,6 +9,39 @@ export type LiveEvent = {
   venue: string
   startsAt: string
   endsAt: string
+  passConfig?: {
+    passMode: 'FREE' | 'PAID' | 'BOTH'
+    freeCapacity: number | null
+    freeRemaining: number | null
+    paidPrice: number
+    paidCapacity: number | null
+    paidRemaining: number | null
+    freePerks: string[]
+    paidPerks: string[]
+  }
+}
+
+export type IndoreView = {
+  slug: string
+  event: {
+    eyebrow: string
+    title: string
+    accent: string
+    text: string
+    city: string
+    state: string
+    startsAt: string
+    dates: string
+    venue: string
+    timing: string
+    badge: string
+    heroImage: string
+    ctas: { stall: { label: string; href: string }; visitor: { label: string; href: string } }
+  }
+  info: {
+    venue: { title: string; name: string; address: string; image: string; cta: { label: string; href: string } }
+    details: { title: string; dates: string; timing: string; entry: string }
+  }
 }
 
 const TZ = 'Asia/Kolkata'
@@ -25,13 +58,12 @@ export function formatEventDates(startsAt: string, endsAt: string) {
   const end = new Date(endsAt)
   const monthYear = (date: Date) => `${part(date, { month: 'short' })} ${part(date, { year: 'numeric' })}`
   if (dayKey(start) === dayKey(end)) return `${ordinal(dayNumber(start))} ${monthYear(start)}`
-  if (monthYear(start) === monthYear(end)) return `${ordinal(dayNumber(start))} - ${ordinal(dayNumber(end))} ${monthYear(end)}`
-  return `${ordinal(dayNumber(start))} ${monthYear(start)} - ${ordinal(dayNumber(end))} ${monthYear(end)}`
+  if (monthYear(start) === monthYear(end)) return `${ordinal(dayNumber(start))} – ${ordinal(dayNumber(end))} ${monthYear(end)}`
+  return `${ordinal(dayNumber(start))} ${monthYear(start)} – ${ordinal(dayNumber(end))} ${monthYear(end)}`
 }
 
-// Builds the hero and info content from a dashboard event, falling back to the demo copy when none is available.
-export function resolveIndoreView(event: LiveEvent | null) {
-  if (!event) return { slug: undefined as string | undefined, event: indoreEvent, info: indoreInfo }
+export function resolveIndoreView(event: LiveEvent | null): IndoreView | null {
+  if (!event) return null
   const start = new Date(event.startsAt)
   const end = new Date(event.endsAt)
   const days = Math.max(1, Math.round((Date.parse(dayKey(end).split('/').reverse().join('-')) - Date.parse(dayKey(start).split('/').reverse().join('-'))) / 86_400_000) + 1)
@@ -43,32 +75,38 @@ export function resolveIndoreView(event: LiveEvent | null) {
   const state = single ? event.state : ''
   const where = withoutRepeats(event.venue, [city, state])
   const mapQuery = encodeURIComponent(withoutRepeats(event.venue, [city]))
+  const description = event.description?.trim() ?? ''
   return {
     slug: event.slug,
     event: {
-      ...indoreEvent,
-      title: single ? (city ? `Comes to ${city}` : event.title) : `Tours ${cities.length} Cities`,
-      accent: days <= 7 ? `${dayWords[days - 1]} ${days === 1 ? 'Day' : 'Days'}, Free.` : 'Free Entry.',
-      text: event.description || indoreEvent.text,
+      eyebrow: 'The Haat of Art',
+      title: event.title || (single ? (city ? `The Haat of Art in ${city}` : 'The Haat of Art') : `The Haat of Art across ${cities.length} cities`),
+      accent: days <= 7 ? `${dayWords[days - 1]} ${days === 1 ? 'Day' : 'Days'}` : 'Exhibition',
+      text: description && !isPlaceholderContent(description)
+        ? description
+        : 'Explore the exhibition, meet participating artists, and plan your visit.',
+      city: event.city,
+      state: event.state,
       startsAt: event.startsAt,
       dates,
       venue: where,
       timing,
+      badge: 'Visitor Registration',
+      heroImage: '/media/hero-exhibition.jpg',
+      ctas: { stall: { label: 'Book Your Stall', href: '/exhibit-with-us' }, visitor: { label: 'Visitor Registration', href: '#register' } },
     },
     info: {
-      ...indoreInfo,
       venue: {
-        ...indoreInfo.venue,
+        title: 'Venue',
         name: event.venue,
         address: single ? withoutRepeats('', [city, state]).replace(/^, /, '') : cities.join(', '),
-        cta: { ...indoreInfo.venue.cta, href: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
+        image: '/media/exhibition-gallery.jpeg',
+        cta: { label: 'View on Map', href: `https://www.google.com/maps/search/?api=1&query=${mapQuery}` },
       },
-      details: { ...indoreInfo.details, dates, timing },
+      details: { title: 'Event Details', dates, timing, entry: 'Visitor registration available' },
     },
   }
 }
-
-export type IndoreView = ReturnType<typeof resolveIndoreView>
 
 // Event state/city fields can list several places ("Pan India — Mumbai, Delhi and Pune").
 export const splitPlaces = (value: string) => value

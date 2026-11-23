@@ -1,21 +1,93 @@
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
 import { SafeImage } from '@/components/home/safe-image'
-import { adminNav, adminRows, artistBenefits, artistNav, artworks, dashStats, plans, profileStats, profileTabs, stepNames } from '@/lib/demo-artist'
+import type { DirectoryArtist } from '@/lib/booking-server'
+import { adminNav, adminRows, artistNav, artworks, dashStats, plans, profileStats, profileTabs, stepNames } from '@/lib/demo-artist'
 
 const Logo = () => <Link href="/" className="ar-logo"><img src="/media/logo.png" alt="The Haat of Art" /></Link>
 export const DemoNote = () => null
 const pill = (s: string) => s.toLowerCase().includes('pend') ? 'is-pend' : s.toLowerCase().includes('rej') ? 'is-rej' : 'is-ok'
 
+const heroFrames = [
+  { src: '/art-detail-painting.png', alt: 'An artist painting in a warmly lit studio', title: 'In the studio', detail: 'A practice in progress' },
+  { src: '/media/ceramics.jpg', alt: 'Hand-finished Indian ceramics in an exhibition display', title: 'Material & memory', detail: 'Craft, texture and tradition' },
+  { src: '/media/exhibition-gallery.jpeg', alt: 'Collectors discovering works in a gallery', title: 'Together in the gallery', detail: 'Art encountered together' },
+]
+
 export function ArtistHero() {
   return (
-    <section className="ar-hero">
-      <SafeImage src="/demo/ind-main.jpg" alt="Artist with painting (demo image)" className="ar-hero-img" />
-      <div className="ar-hero-text">
-        <h1>Showcase<br />Your Art to<br />a Wider Audience</h1>
-        <p>Create your artist profile, share your artworks and be part of The Haat of Art community.</p>
-        <Link className="th-btn" href="/artist/register">Join as an Artist →</Link>
+    <section className="ar-hero-editorial">
+      <div className="ar-hero-editorial-copy">
+        <p className="ar-editorial-kicker">Curated Artist Roster 2026</p>
+        <h1>The Hands Behind India&apos;s Living Canvas</h1>
+        <p className="ar-hero-editorial-subtitle">Meet the artists shaping contemporary Indian art—each with a distinct voice, a living practice and a story worth discovering.</p>
+        <div className="ar-hero-editorial-actions">
+          <Link className="ar-editorial-primary" href="/artist/register">Apply as an Artist <span aria-hidden="true">→</span></Link>
+          <Link className="ar-editorial-secondary" href="/gallery">Browse Artworks in Gallery <span aria-hidden="true">→</span></Link>
+          <Link className="ar-editorial-tertiary" href="/artists#artists-directory">Explore Roster <span aria-hidden="true">↓</span></Link>
+        </div>
+        <div className="ar-hero-editorial-stats" aria-label="Artist roster highlights">
+          <div><strong>120+</strong><span>Curated Artists</span></div>
+          <div><strong>14+</strong><span>Indian Cities</span></div>
+          <div><strong>Zero</strong><span>Commission for Exhibitors</span></div>
+        </div>
       </div>
-      <div className="ar-benefits">{artistBenefits.map((b) => <div key={b.title}><i>{b.icon}</i><b>{b.title}</b><small>{b.sub}</small></div>)}</div>
+      <div className="ar-hero-collage" role="group" aria-label="Artists at work and exhibition craft">
+        {heroFrames.map((frame, index) => (
+          <figure className={`ar-hero-frame ar-hero-frame-${index + 1}`} key={frame.src}>
+            <SafeImage src={frame.src} alt={frame.alt} fallback="/media/visual-art.jpeg" />
+            <figcaption><strong>{frame.title}</strong><span>{frame.detail}</span></figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function ArtistSpotlight({ artist }: { artist?: DirectoryArtist }) {
+  if (!artist) return null
+  return (
+    <section className="ar-spotlight" aria-labelledby="ar-spotlight-title">
+      <div className="ar-spotlight-art">
+        <SafeImage src={artist.artworkUrl} alt={`${artist.displayName}'s signature ${artist.medium} painting`} fallback="/media/visual-art.jpeg" />
+        <span className="ar-spotlight-art-caption">A signature work by {artist.displayName}</span>
+      </div>
+      <div className="ar-spotlight-copy">
+        <p className="ar-spotlight-badge">Curator&apos;s Spotlight <span aria-hidden="true">✦</span></p>
+        <p className="ar-spotlight-month">Artist of the Month</p>
+        <h2 id="ar-spotlight-title">{artist.displayName}</h2>
+        <p className="ar-spotlight-meta">{artist.city} · {artist.medium}</p>
+        {artist.spotlightQuote && <blockquote>“{artist.spotlightQuote}”</blockquote>}
+        <p className="ar-spotlight-works"><strong>{artist.artworkCount}</strong> Exhibited Works</p>
+        <Link className="ar-spotlight-link" href={`/artists/${artist.slug}`}>View Artist Monograph <ArrowRight size={17} /></Link>
+      </div>
+    </section>
+  )
+}
+
+const membershipBenefits = [
+  { number: '01', title: 'Zero-Fee Starter Showcase', detail: 'Begin with a considered artist profile and a place in our curated roster.' },
+  { number: '02', title: 'Pan-India Collector Network', detail: 'Meet collectors, designers and art lovers across India.' },
+  { number: '03', title: 'Physical & Digital Exhibitions', detail: 'Bring your work to life in gallery spaces and online.' },
+  { number: '04', title: 'Personal Curator & Press Kit', detail: 'Get thoughtful guidance and a polished introduction to your practice.' },
+]
+
+export function ArtistMembership() {
+  return (
+    <section className="ar-membership" aria-labelledby="ar-membership-title">
+      <div className="ar-membership-heading">
+        <p className="ar-editorial-kicker">More than a listing</p>
+        <h2 id="ar-membership-title">An Artist Membership, Thoughtfully Made</h2>
+      </div>
+      <div className="ar-membership-grid">
+        {membershipBenefits.map((benefit) => (
+          <article className="ar-membership-item" key={benefit.number}>
+            <span>{benefit.number}</span>
+            <h3>{benefit.title}</h3>
+            <p>{benefit.detail}</p>
+          </article>
+        ))}
+      </div>
     </section>
   )
 }
@@ -54,7 +126,7 @@ export function RegisterForm() {
         <Field label="Full Name" ph="Enter your full name" req />
         <Field label="Email Address" ph="Enter your email address" type="email" req />
         <Field label="Password" ph="Create a strong password" type="password" req />
-        <label className="ar-check"><input type="checkbox" /> I agree to the <Link href="/contact">Terms &amp; Conditions</Link> and <Link href="/contact">Privacy Policy</Link></label>
+        <label className="ar-check"><input type="checkbox" /> I agree to the <Link href="/terms-and-conditions">Terms &amp; Conditions</Link> and <Link href="/privacy-policy">Privacy Policy</Link></label>
         <button className="th-btn ar-wide" type="submit">Send OTP →</button>
       </form>
       <p className="ar-foot">Already have an account? <Link href="/artist/dashboard">Sign In</Link></p>
@@ -81,7 +153,7 @@ export function VerifyForm() {
 export function ProfileSetup() {
   return (
     <AuthCard step={3} wide>
-      <h2 className="ar-left">Tell Us About Yourself</h2>
+      <h1 className="ar-left">Tell Us About Yourself</h1>
       <p className="ar-sub ar-left">Set up your artist profile. You can update this later.</p>
       <form className="ar-form" action="/artist/dashboard">
         <div className="ar-prof-top"><SafeImage src="/demo/artist1.jpg" alt="Profile photo (demo)" /><div><Field label="Artist Name" ph="Priya Sharma" req /><Field label="City" ph="Mumbai" req /></div></div>
@@ -96,6 +168,7 @@ export function ProfileSetup() {
 
 export function PanelShell({ variant, active, title, sub, action, userName, children }: { userName?: string; variant: 'artist' | 'admin'; active: string; title: string; sub?: string; action?: React.ReactNode; children: React.ReactNode }) {
   const nav: ReadonlyArray<readonly [string, string]> = variant === 'artist' ? artistNav : adminNav.map((n) => [n, '/admin-demo/artworks'] as const)
+  const MainRegion = variant === 'admin' ? 'main' : 'section'
   return (
     <div className={`ar-panel is-${variant}`}>
       <aside className="ar-side">
@@ -103,11 +176,11 @@ export function PanelShell({ variant, active, title, sub, action, userName, chil
         <div className="ar-user"><SafeImage src="/demo/artist1.jpg" alt="" /><span><b>{userName || 'Priya Sharma'}</b><small>{variant === 'artist' ? 'Artist' : 'Super Admin'}</small></span></div>
         <nav>{nav.map(([n, href]) => <Link key={n} href={href} className={n === active ? 'is-active' : ''}>{n}</Link>)}</nav>
       </aside>
-      <section className="ar-main">
+      <MainRegion className="ar-main">
         <header className="ar-main-head"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{action}</header>
         {children}
         <DemoNote />
-      </section>
+      </MainRegion>
     </div>
   )
 }
@@ -157,7 +230,7 @@ export function PlansPage() {
           </div>
         ))}
       </div>
-      <p className="ar-mini">Demo prices — payments are not connected. All plans are subject to our <Link href="/contact">Terms &amp; Conditions</Link>. Prices shown are sample values.</p>
+      <p className="ar-mini">Demo prices — payments are not connected. All plans are subject to our <Link href="/terms-and-conditions">Terms &amp; Conditions</Link>. Prices shown are sample values.</p>
       <DemoNote />
     </main>
   )

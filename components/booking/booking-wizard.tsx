@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  apiBaseUrl, bookingApi, formatEventDates, formatMoney, getMine, getStalls, stallSize,
+  apiBaseUrl, bookingApi, formatEventDates, formatMoney, getEventStallTypes, getMine, getStalls, stallSize, stallSquareMeters,
   taxRatePercent, totalWithTax, uploadApplicationMedia,
-  type BookingUser, type Exhibition, type MineApplication, type MyBooking, type Stall, type StallType,
+  type BookingProfile, type BookingUser, type Exhibition, type MineApplication, type MyBooking, type Stall, type StallType,
 } from '@/lib/booking-api'
 import {
-  CityTabs, ExhibitionCards, ImageUploader, PdfUploader, PreferenceChecklist,
+  CityTabs, ExhibitionCards, ImageUploader, PdfUploader,
   RichTextEditor, SignInPanel, StallMap, categoryLabel,
 } from './booking-parts'
 import { PaymentStage } from './booking-payment'
@@ -21,32 +21,55 @@ const artForms = [
 ]
 
 const spaceOptions = [
-  { id: 'INDIVIDUAL', label: 'Individual Stall' },
-  { id: 'GROUP', label: 'Group Stall' },
-  { id: 'GALLERY', label: 'Gallery Space' },
+  { id: 'INDIVIDUAL', label: 'Individual Stall', widthM: 2, depthM: 2, approxSize: '4' },
+  { id: 'GROUP', label: 'Group Stall', widthM: 6, depthM: 4, approxSize: '24' },
+  { id: 'GALLERY', label: 'Gallery Space', widthM: 10, depthM: 8, approxSize: '80' },
 ] as const
+const stallSlugCategories: Record<string, 'INDIVIDUAL' | 'GROUP' | 'GALLERY'> = {
+  compact: 'INDIVIDUAL',
+  standard: 'INDIVIDUAL',
+  group: 'GROUP',
+  gallery: 'GALLERY',
+}
+const stallSlugSizes: Record<string, string> = { compact: '4', standard: '9', group: '24', gallery: '80' }
 
 const steps = ['Personal Details', 'Artwork Details', 'Preferences', 'Select Stall', 'Review'] as const
 
 type Pictures = { id: string; file: File; previewUrl: string }[]
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
-export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage }: {
+export function BookingWizard({ exhibitions, initialUser, heroImage, initialStall }: {
   exhibitions: Exhibition[]
-  stallTypes: StallType[]
   initialUser: BookingUser | null
   heroImage: { src: string; alt: string }
+  initialStall: string
 }) {
   const [user, setUser] = useState(initialUser)
   const [step, setStep] = useState<Step>(0)
   const [city, setCity] = useState('All')
   const [eventIds, setEventIds] = useState<string[]>([])
+  const [selectedState, setSelectedState] = useState('')
   const [personal, setPersonal] = useState({ firstName: '', lastName: '', phone: '', address: '' })
   const [art, setArt] = useState({ artForm: '', fasciaName: '', bio: '', websiteUrl: '', instagramUrl: '' })
-  const [prefs, setPrefs] = useState({ spaceCategory: '', stallTypeId: '', approxSize: '', requirements: '' })
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileAutoFilled, setProfileAutoFilled] = useState(false)
+  const [profileLoadError, setProfileLoadError] = useState('')
+  const [profileSaveError, setProfileSaveError] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [prefs, setPrefs] = useState({
+    spaceCategory: stallSlugCategories[initialStall] ?? '',
+    stallTypeId: '',
+    approxSize: stallSlugSizes[initialStall] ?? '',
+    requirements: '',
+  })
   const [pictures, setPictures] = useState<Pictures>([])
   const [portfolio, setPortfolio] = useState<File | null>(null)
   const [stalls, setStalls] = useState<Stall[]>([])
+  const [cityStallTypes, setCityStallTypes] = useState<StallType[]>([])
+  const [cityStallTypesLoading, setCityStallTypesLoading] = useState(false)
+  const [cityStallTypesError, setCityStallTypesError] = useState('')
+  const [stallsLoading, setStallsLoading] = useState(false)
+  const [stallsError, setStallsError] = useState('')
   const [stallId, setStallId] = useState('')
   const [agree, setAgree] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -61,10 +84,31 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
 
   const eventId = eventIds[0] ?? ''
   const exhibition = exhibitions.find((entry) => entry.id === eventId) ?? null
+  const exhibitionStates = useMemo(
+    () => (exhibition?.state ?? '').split(/[,;/]/).map((state) => state.trim()).filter(Boolean),
+    [exhibition?.state],
+  )
   const cities = useMemo(() => [...new Set(exhibitions.map((entry) => entry.city).filter(Boolean))].sort(), [exhibitions])
   const visible = city === 'All' ? exhibitions : exhibitions.filter((entry) => entry.city === city)
   const stall = stalls.find((entry) => entry.id === stallId) ?? null
-  const preferredType = stallTypes.find((entry) => entry.id === prefs.stallTypeId) ?? null
+  const preferredType = cityStallTypes.find((entry) => entry.id === prefs.stallTypeId) ?? null
+
+  function chooseSpaceOption(option: (typeof spaceOptions)[number]) {
+    const matchingType = cityStallTypes.find((type) =>
+      type.category === option.id && Number(type.widthM) === option.widthM && Number(type.depthM) === option.depthM,
+    ) ?? cityStallTypes.find((type) => type.category === option.id)
+    setPrefs((current) => ({
+      ...current,
+      spaceCategory: option.id,
+      stallTypeId: matchingType?.id ?? '',
+      approxSize: option.approxSize,
+    }))
+    setErrors((current) => {
+      const next = { ...current }
+      delete next.spaceCategory
+      return next
+    })
+  }
 
   const loadMine = useCallback(async () => {
     if (!user) { setMine(null); return }
@@ -74,11 +118,106 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
   useEffect(() => { void loadMine() }, [loadMine])
 
   useEffect(() => {
-    if (!eventId) { setStalls([]); return }
+    const firstState = (exhibition?.state ?? '').split(/[,;/]/).map((state) => state.trim()).find(Boolean) ?? ''
+    setSelectedState(firstState)
+    setStallId('')
+    setPrefs((current) => ({ ...current, stallTypeId: '' }))
+  }, [eventId, exhibition?.state])
+
+  useEffect(() => {
+    if (!eventId) {
+      setCityStallTypes([])
+      setCityStallTypesError('')
+      setCityStallTypesLoading(false)
+      return
+    }
     let cancelled = false
-    getStalls(eventId).then((rows) => { if (!cancelled) setStalls(rows) }).catch(() => { if (!cancelled) setStalls([]) })
+    setCityStallTypes([])
+    setCityStallTypesLoading(true)
+    setCityStallTypesError('')
+    getEventStallTypes(eventId, selectedState)
+      .then((types) => { if (!cancelled) setCityStallTypes(types) })
+      .catch((cause: unknown) => {
+        if (!cancelled) setCityStallTypesError(cause instanceof Error ? cause.message : 'City-specific stall tariffs could not be loaded.')
+      })
+      .finally(() => { if (!cancelled) setCityStallTypesLoading(false) })
     return () => { cancelled = true }
-  }, [eventId])
+  }, [eventId, selectedState])
+
+  useEffect(() => {
+    if (!initialStall) return
+    const preferred = cityStallTypes.find((type) => type.code.toLowerCase() === initialStall)
+    if (!preferred) return
+    setPrefs((current) => ({
+      ...current,
+      spaceCategory: preferred.category,
+      stallTypeId: preferred.id,
+      approxSize: stallSlugSizes[initialStall] ?? current.approxSize,
+    }))
+  }, [cityStallTypes, initialStall])
+
+  useEffect(() => {
+    if (!eventId) {
+      setStalls([])
+      setStallsLoading(false)
+      setStallsError('')
+      return
+    }
+    let cancelled = false
+    setStalls([])
+    setStallsLoading(true)
+    setStallsError('')
+    getStalls(eventId, selectedState)
+      .then((rows) => { if (!cancelled) setStalls(rows) })
+      .catch((cause: unknown) => {
+        if (!cancelled) setStallsError(cause instanceof Error ? cause.message : 'Floor plan data could not be loaded.')
+      })
+      .finally(() => { if (!cancelled) setStallsLoading(false) })
+    return () => { cancelled = true }
+  }, [eventId, selectedState])
+
+  useEffect(() => {
+    if (!user || !eventId) {
+      setProfileLoading(false)
+      setProfileAutoFilled(false)
+      if (!user) {
+        setPersonal({ firstName: '', lastName: '', phone: '', address: '' })
+        setArt((current) => ({ ...current, websiteUrl: '', instagramUrl: '' }))
+      }
+      return
+    }
+
+    let cancelled = false
+    setProfileLoading(true)
+    setProfileAutoFilled(false)
+    setProfileLoadError('')
+    bookingApi<BookingProfile>('/api/bookings/profile')
+      .then((profile) => {
+        if (cancelled) return
+        setPersonal({
+          firstName: profile.firstName ?? '',
+          lastName: profile.lastName ?? '',
+          phone: profile.phone ?? '',
+          address: profile.address ?? '',
+        })
+        setArt((current) => ({
+          ...current,
+          websiteUrl: profile.websiteUrl ?? '',
+          instagramUrl: profile.instagramUrl ?? '',
+        }))
+        setProfileAutoFilled(
+          [profile.firstName, profile.lastName, profile.phone, profile.email, profile.address]
+            .every((value) => typeof value === 'string' && value.trim().length > 0),
+        )
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setProfileLoadError(cause instanceof Error ? cause.message : 'Could not load your saved exhibitor profile.')
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [eventId, user])
 
   useEffect(() => {
     wizardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -132,15 +271,16 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
     const next: Record<string, string> = {}
     if (target > 1) {
       if (personal.firstName.trim().length < 2) next.firstName = 'Enter your first name.'
+      if (personal.lastName.trim().length < 1) next.lastName = 'Enter your last name.'
       if (!/^[0-9+()\s-]{6,30}$/.test(personal.phone.trim())) next.phone = 'Enter a valid phone number.'
       if (personal.address.trim().length < 6) next.address = 'Enter your complete address.'
+      if (art.websiteUrl && !isUrl(art.websiteUrl)) next.websiteUrl = 'Use a full web address, e.g. https://yourstudio.com'
+      if (art.instagramUrl && !isUrl(art.instagramUrl)) next.instagramUrl = 'Use a full profile link, e.g. https://instagram.com/yourhandle'
     }
     if (target > 2) {
       if (!art.artForm) next.artForm = 'Choose your art form.'
       const plain = art.bio.replace(/<[^>]*>/g, '').trim()
       if (plain.length < 20) next.bio = 'Tell us about your artwork in at least 20 characters.'
-      if (art.websiteUrl && !isUrl(art.websiteUrl)) next.websiteUrl = 'Use a full web address, e.g. https://yourstudio.com'
-      if (art.instagramUrl && !isUrl(art.instagramUrl)) next.instagramUrl = 'Use a full profile link, e.g. https://instagram.com/yourhandle'
     }
     if (target > 3) {
       if (!eventId) next.eventIds = 'Select the exhibition you want to book for.'
@@ -152,6 +292,36 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
     }
     setErrors(next)
     return !Object.keys(next).length
+  }
+
+  async function saveProfileAndContinue() {
+    if (!validateStep(2) || !user) return
+    setProfileSaving(true)
+    setProfileSaveError('')
+    try {
+      const saved = await bookingApi<BookingProfile>('/api/bookings/profile', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          firstName: personal.firstName.trim(),
+          lastName: personal.lastName.trim(),
+          phone: personal.phone.trim(),
+          address: personal.address.trim(),
+          websiteUrl: normaliseUrl(art.websiteUrl) ?? '',
+          instagramUrl: normaliseUrl(art.instagramUrl) ?? '',
+        }),
+      })
+      setProfileLoadError('')
+      setProfileAutoFilled(
+        [saved.firstName, saved.lastName, saved.phone, saved.email, saved.address]
+          .every((value) => typeof value === 'string' && value.trim().length > 0),
+      )
+      go(2)
+    } catch (cause: unknown) {
+      setProfileSaveError(cause instanceof Error ? cause.message : 'Your details could not be saved. Please try again.')
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   function go(target: Step) {
@@ -231,9 +401,11 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
               onToggle={(id) => {
                 if (eventIds[0] === id) {
                   setEventIds([])
+                  setStallId('')
                   return
                 }
                 setEventIds([id])
+                setStallId('')
                 setErrors({})
                 setStep(1)
               }} />
@@ -245,7 +417,7 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
       {step > 0 && (
         <section className="bw-wizard" ref={wizardRef}>
           <div className="bw-head">
-            <button className="bw-change-event" type="button" onClick={() => { setEventIds([]); setErrors({}); setStep(0) }}>
+            <button className="bw-change-event" type="button" onClick={() => { setEventIds([]); setStallId(''); setErrors({}); setStep(0) }}>
               ← Change exhibition
             </button>
             <img src="/media/logo.png" alt="" aria-hidden="true" />
@@ -275,47 +447,56 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
                   setUser(fresh.user)
                   setVerificationEmail('')
                 }} />
-                : <SignInPanel busy={busy} error={authError} onSuccess={() => undefined} onSignIn={signIn} onRegister={register} />)}
+                : <SignInPanel busy={busy} error={authError} onSuccess={() => undefined}
+                  onModeChange={() => wizardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  onSignIn={signIn} onRegister={register} />)}
               {user && (
                 <>
+                  {profileLoading && <p className="bw-profile-note" role="status">Looking for your saved exhibitor details…</p>}
+                  {profileAutoFilled && <p className="bw-profile-autofill" role="status">Personal details auto-filled from your exhibitor profile ✓</p>}
+                  {profileLoadError && <p className="bw-field-error" role="alert">Your saved profile could not be loaded: {profileLoadError} You can review or enter your details below.</p>}
                   <div className="bw-row">
                     <Field label="First Name" required error={errors.firstName}>
-                      <input value={personal.firstName} maxLength={80} autoComplete="given-name" placeholder="Enter your first name"
+                      <input value={personal.firstName} maxLength={80} autoComplete="given-name" placeholder="Enter your first name" disabled={profileLoading}
                         onChange={(event) => setPersonal({ ...personal, firstName: event.target.value })} />
                     </Field>
-                    <Field label="Last Name" error={errors.lastName}>
-                      <input value={personal.lastName} maxLength={80} autoComplete="family-name" placeholder="Enter your last name"
+                    <Field label="Last Name" required error={errors.lastName}>
+                      <input value={personal.lastName} maxLength={80} autoComplete="family-name" placeholder="Enter your last name" disabled={profileLoading}
                         onChange={(event) => setPersonal({ ...personal, lastName: event.target.value })} />
                     </Field>
                   </div>
                   <Field label="Phone Number" required error={errors.phone}>
                     <div className="bw-phone">
-                      <span className="bw-dial" aria-hidden="true">🇮🇳 +91</span>
-                      <input value={personal.phone} maxLength={30} inputMode="tel" autoComplete="tel" placeholder="Enter phone number"
+                      <span className="bw-dial" aria-hidden="true">IN +91</span>
+                      <input value={personal.phone} maxLength={30} inputMode="tel" autoComplete="tel" placeholder="Enter phone number" disabled={profileLoading}
                         onChange={(event) => setPersonal({ ...personal, phone: event.target.value })} />
                     </div>
                   </Field>
                   <Field label="Email Address" required>
                     <div className="bw-locked">
                       <input value={userEmail(user)} readOnly aria-readonly="true" />
-                      <span>Linked to your signed-in exhibitor account</span>
+                      <span className="bw-verified-badge">Verified ✓</span>
                     </div>
+                    <small className="bw-locked-note">Linked to your signed-in exhibitor account</small>
                   </Field>
                   <Field label="Address" required error={errors.address}>
-                    <textarea rows={3} value={personal.address} maxLength={500} placeholder="Enter your complete address"
+                    <textarea rows={3} value={personal.address} maxLength={500} placeholder="Enter your complete address" disabled={profileLoading}
                       onChange={(event) => setPersonal({ ...personal, address: event.target.value })} />
                   </Field>
                   <div className="bw-row">
                     <Field label="Website" error={errors.websiteUrl}>
-                      <input value={art.websiteUrl} maxLength={500} placeholder="https://" onChange={(event) => setArt({ ...art, websiteUrl: event.target.value })} />
+                      <input value={art.websiteUrl} maxLength={500} placeholder="https://" disabled={profileLoading} onChange={(event) => setArt({ ...art, websiteUrl: event.target.value })} />
                     </Field>
                     <Field label="Instagram ID" error={errors.instagramUrl}>
-                      <input value={art.instagramUrl} maxLength={500} placeholder="https://instagram.com/yourhandle" onChange={(event) => setArt({ ...art, instagramUrl: event.target.value })} />
+                      <input value={art.instagramUrl} maxLength={500} placeholder="https://instagram.com/yourhandle" disabled={profileLoading} onChange={(event) => setArt({ ...art, instagramUrl: event.target.value })} />
                     </Field>
                   </div>
+                  {profileSaveError && <p className="bw-field-error" role="alert">Your details could not be saved: {profileSaveError}</p>}
                   <div className="bw-actions">
                     <button className="bw-btn-ghost" type="button" onClick={signOut}>Sign out</button>
-                    <button className="bw-btn-primary" type="button" onClick={() => go(2)}>Save &amp; Continue →</button>
+                    <button className="bw-btn-primary" type="button" disabled={profileLoading || profileSaving} onClick={saveProfileAndContinue}>
+                      {profileSaving ? 'Saving…' : 'Save & Continue →'}
+                    </button>
                   </div>
                 </>
               )}
@@ -356,19 +537,44 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
           {step === 3 && (
             <Panel title="Exhibition Preference">
               <div className="bw-field">
-                <span className="bw-label">Select Exhibition <em>*</em></span>
-                <PreferenceChecklist exhibitions={exhibitions.filter((entry) => entry.registrationOpen)} selectedIds={eventIds}
-                  onToggle={(id) => { setEventIds((current) => current[0] === id ? [] : [id]); setStallId('') }} />
+                <span className="bw-label">Selected Exhibition</span>
+                <div className="bw-selected-exhibition">
+                  <div className="bw-selected-exhibition-copy">
+                    <strong>{exhibition?.title ?? 'No exhibition selected'}</strong>
+                    {exhibition && <span>{formatEventDates(exhibition.startsAt, exhibition.endsAt)}</span>}
+                  </div>
+                  <div className="bw-selected-exhibition-actions">
+                    {exhibition && <span className="bw-selected-badge">Selected ✓</span>}
+                    <button className="bw-linkbtn" type="button" onClick={() => {
+                      setEventIds([])
+                      setStallId('')
+                      setErrors({})
+                      setStep(0)
+                    }}>Change exhibition</button>
+                  </div>
+                </div>
                 {errors.eventIds && <p className="bw-field-error" role="alert">{errors.eventIds}</p>}
-                <p className="bw-hint">One exhibition per application — you can apply to the others any time after this one is confirmed.</p>
               </div>
+              {exhibitionStates.length > 1 ? (
+                <Field label="Choose the state for your stall" required>
+                  <select value={selectedState} onChange={(event) => {
+                    setSelectedState(event.target.value)
+                    setStallId('')
+                    setPrefs((current) => ({ ...current, stallTypeId: '' }))
+                  }}>
+                    {exhibitionStates.map((state) => <option key={state} value={state}>{state}</option>)}
+                  </select>
+                </Field>
+              ) : selectedState ? (
+                <p className="bw-hint">State-specific stall options for <strong>{selectedState}</strong>.</p>
+              ) : null}
               <div className="bw-field">
                 <span className="bw-label">Space size looking for <em>*</em></span>
                 <div className="bw-spaces">
                   {spaceOptions.map((option) => (
                     <label key={option.id} className={`bw-space ${prefs.spaceCategory === option.id ? 'is-active' : ''}`}>
                       <input type="radio" name="bw-space" value={option.id} checked={prefs.spaceCategory === option.id}
-                        onChange={() => setPrefs({ ...prefs, spaceCategory: option.id })} />
+                        onChange={() => chooseSpaceOption(option)} />
                       <span>{option.label}</span>
                     </label>
                   ))}
@@ -378,11 +584,16 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
               <Field label="Preferred Stall Type">
                 <select value={prefs.stallTypeId} onChange={(event) => setPrefs({ ...prefs, stallTypeId: event.target.value })}>
                   <option value="">Select stall type</option>
-                  {stallTypes.filter((type) => !prefs.spaceCategory || type.category === prefs.spaceCategory).map((type) => (
+                  {cityStallTypes.filter((type) => !prefs.spaceCategory || type.category === prefs.spaceCategory).map((type) => (
                     <option key={type.id} value={type.id}>{type.name} · {stallSize(type)} · {formatMoney(totalWithTax(Number(type.price), Number(type.taxRate)).total)}</option>
                   ))}
                 </select>
               </Field>
+              {cityStallTypesLoading && <p className="bw-hint" role="status">Loading live tariffs for {selectedState || exhibition?.city || 'this exhibition'}…</p>}
+              {cityStallTypesError && <p className="bw-field-error" role="alert">State-specific tariffs could not be loaded: {cityStallTypesError}</p>}
+              {!cityStallTypesLoading && !cityStallTypesError && exhibition && !cityStallTypes.length && (
+                <p className="bw-hint" role="status">Stall tariffs for this exhibition have not been published yet. Please contact the Exhibition Admin.</p>
+              )}
               <Field label="Approx. Size (in sq m)">
                 <input value={prefs.approxSize} inputMode="decimal" placeholder="Enter space required" maxLength={6}
                   onChange={(event) => setPrefs({ ...prefs, approxSize: event.target.value.replace(/[^0-9.]/g, '') })} />
@@ -403,13 +614,29 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
               {!exhibition && <p className="bw-empty">Go back to Preferences and pick an exhibition to see its floor plan.</p>}
               {exhibition && (
                 <>
-                  <StallMap stalls={stalls} selectedId={stallId} onSelect={setStallId}
-                    coverUrl={exhibition.media[0] ? `${apiBaseUrl}${exhibition.media[0].url}` : undefined} coverAlt={exhibition.title} />
+                  {stallsLoading ? (
+                    <p className="bw-empty" role="status">Loading this exhibition&apos;s live floor plan…</p>
+                  ) : stallsError ? (
+                    <p className="bw-field-error" role="alert">The floor plan could not be loaded: {stallsError}</p>
+                  ) : stalls.length > 0 ? (
+                    <StallMap stalls={stalls} selectedId={stallId} onSelect={setStallId}
+                      preferredCategory={spaceOptions.find((option) => option.id === prefs.spaceCategory)?.id}
+                      coverUrl={exhibition.media[0] ? `${apiBaseUrl}${exhibition.media[0].url}` : undefined} coverAlt={exhibition.title} />
+                  ) : (
+                    <div className="bw-priority-allocation">
+                      <span className="bw-priority-eyebrow">PERSONAL STALL PLACEMENT</span>
+                      <h3>Priority Allocation</h3>
+                      <p>This exhibition is preparing its live floor plan. Continue your application and our team will help place you in the right space.</p>
+                      <button className="bw-btn-primary" type="button" onClick={() => go(5)}>Proceed to Review →</button>
+                    </div>
+                  )}
                   <div className="bw-actions">
                     <button className="bw-btn-ghost" type="button" onClick={() => setStep(3)}>← Back</button>
-                    <button className="bw-btn-primary" type="button" onClick={() => go(5)}>
-                      {stall ? `Confirm Selection — ${stall.code} →` : 'Continue without a stall →'}
-                    </button>
+                    {!stallsLoading && !stallsError && stalls.length > 0 && (
+                      <button className="bw-btn-primary" type="button" onClick={() => go(5)}>
+                        {stall ? `Confirm Booth ${stall.code} & Review →` : 'Continue without a stall →'}
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -435,11 +662,11 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
               <ReviewBlock title="Exhibition & Stall" onEdit={() => setStep(3)} rows={[
                 ['Exhibition', exhibition?.title ?? '—'],
                 ['Dates', exhibition ? formatEventDates(exhibition.startsAt, exhibition.endsAt) : '—'],
-                ['Venue', exhibition ? [exhibition.venue, exhibition.city].filter(Boolean).join(', ') : '—'],
-                ['Space', prefs.spaceCategory ? categoryLabel(prefs.spaceCategory) : '—'],
-                ['Preferred Type', preferredType?.name ?? 'Any'],
-                ['Stall', stall ? `${stall.code} (${stall.type.name})` : 'Suggest one for me'],
-                ...(prefs.approxSize ? [['Approx. Size', `${prefs.approxSize} sq m`] as [string, string]] : []),
+                ['Venue', exhibition ? formatVenue(exhibition.venue, exhibition.city) : '—'],
+                [stall ? 'Space / Tier' : 'Space', stall?.type.name ?? (prefs.spaceCategory ? categoryLabel(prefs.spaceCategory) : '—')],
+                ...(!stall ? [['Preferred Type', preferredType?.name ?? 'Any'] as [string, string]] : []),
+                [stall ? 'Booth' : 'Stall', stall ? stall.code : 'Suggest one for me'],
+                [stall ? 'Dimensions & Size' : 'Approx. Size', stall ? `${stallSize(stall.type)} (${stallSquareMeters(stall.type)} sq m)` : prefs.approxSize ? `${prefs.approxSize} sq m` : '—'],
                 ...(prefs.requirements ? [['Special Requirements', prefs.requirements] as [string, string]] : []),
               ]}>
                 {stall && (
@@ -456,7 +683,7 @@ export function BookingWizard({ exhibitions, stallTypes, initialUser, heroImage 
               </label>
               {errors.agree && <p className="bw-field-error" role="alert">{errors.agree}</p>}
               {error && <p className="bw-field-error" role="alert">{error}</p>}
-              <div className="bw-actions">
+              <div className="bw-actions bw-review-actions">
                 <button className="bw-btn-ghost" type="button" onClick={() => setStep(4)}>← Back</button>
                 <button className="bw-btn-primary" type="button" disabled={busy || !user} onClick={submitApplication}>{busy ? 'Submitting…' : 'Submit Application'}</button>
               </div>
@@ -551,4 +778,10 @@ function normaliseUrl(value: string) {
 
 function userEmail(user: BookingUser | null) {
   return user?.email ?? ''
+}
+
+function formatVenue(venue: string, city: string) {
+  const parts = [venue.trim(), city.trim()].filter(Boolean)
+  if (parts.length < 2 || parts[0].toLocaleLowerCase().includes(parts[1].toLocaleLowerCase())) return parts[0] ?? '—'
+  return parts.join(', ')
 }

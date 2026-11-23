@@ -9,7 +9,13 @@ const maxAttachmentBytes = 5 * 1024 * 1024
 
 type FieldErrors = Partial<Record<'name' | 'email' | 'phone' | 'subject' | 'message' | 'consent' | 'attachment', string>>
 
-export function ContactForm() {
+export function ContactForm({
+  category,
+  onCategoryChange,
+}: {
+  category: string
+  onCategoryChange: (value: string) => void
+}) {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [error, setError] = useState('')
   const [refCode, setRefCode] = useState('')
@@ -53,7 +59,7 @@ export function ContactForm() {
     setError('')
     const data = new FormData(form)
     try {
-      const response = await fetch(`${apiBaseUrl}/api/enquiries`, {
+      const response = await fetch(`${apiBaseUrl}/api/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -75,10 +81,11 @@ export function ContactForm() {
         return
       }
       setRefCode(payload.refCode)
+      setStatus('sent')
       if (attachment && payload.id) {
         setAttachmentNotice('')
         try {
-          const upload = await fetch(`${apiBaseUrl}/api/enquiries/${payload.id}/attachment`, {
+          const upload = await fetch(`${apiBaseUrl}/api/contact/${payload.id}/attachment`, {
             method: 'POST',
             headers: { 'Content-Type': attachment.type, 'X-File-Name': encodeURIComponent(attachment.name) },
             body: attachment,
@@ -90,7 +97,6 @@ export function ContactForm() {
       }
       form.reset()
       setAttachment(null)
-      setStatus('sent')
     } catch {
       setStatus('error')
       setError('We could not reach the server. Your enquiry has not been recorded — please try again.')
@@ -120,10 +126,10 @@ export function ContactForm() {
       {errors.name && <p className="ct-field-error">{errors.name}</p>}
       {errors.email && <p className="ct-field-error">{errors.email}</p>}
       <div className="ct-row">
-        <label>Mobile number <small>optional</small><input name="phone" maxLength={30} inputMode="tel" autoComplete="tel" aria-invalid={Boolean(errors.phone)} /></label>
+        <label><span>Mobile number <small>(optional)</small></span><input name="phone" maxLength={30} inputMode="tel" autoComplete="tel" aria-invalid={Boolean(errors.phone)} /></label>
         <label>Enquiry category
-          <select name="category" defaultValue="General">
-            {contactEnquiryCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+          <select name="category" value={category} onChange={(event) => onCategoryChange(event.currentTarget.value)}>
+            {contactEnquiryCategories.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
       </div>

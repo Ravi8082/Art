@@ -3,8 +3,8 @@ import { ArrowRight, CalendarDays, MapPin, Sparkles, TicketCheck } from 'lucide-
 import { PublicShell } from '@/components/public-shell'
 import { apiBaseUrl, getEvents, getShell, type PublicEvent } from '@/lib/api'
 
-export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Exhibitions & Events · The Haat of Art' }
+export const revalidate = 30
+export const metadata = { title: 'Exhibitions & Events · The Haat of Art', alternates: { canonical: '/exhibitions/events' } }
 
 function dateRange(startsAt: string, endsAt: string) {
   const start = new Date(startsAt)

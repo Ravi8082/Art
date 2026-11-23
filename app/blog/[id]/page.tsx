@@ -1,26 +1,29 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { ArrowUpRight } from 'lucide-react'
 import { apiBaseUrl, formatDate, getBlogPost, getShell } from '@/lib/api'
 import { PublicShell } from '@/components/public-shell'
-import { BlogArticle } from '@/components/blog/blog-sections'
-import { demoBlogs } from '@/lib/demo-blogs'
+import { isPlaceholderContent } from '@/lib/content-quality'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 30
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const post = await getBlogPost(id)
+  if (!post || isPlaceholderContent(post.title, post.excerpt, post.body)) return { robots: { index: false, follow: true } }
+  return {
+    title: post.title,
+    description: post.excerpt,
+    alternates: { canonical: `/blog/${encodeURIComponent(id)}` },
+    openGraph: { type: 'article', title: post.title, description: post.excerpt, url: `/blog/${encodeURIComponent(id)}` },
+  }
+}
 
 export default async function BlogPostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const demo = demoBlogs.find((b) => b.slug === id && b.published)
-  if (demo) {
-    const { shell } = await getShell()
-    return (
-      <PublicShell {...shell}>
-        <BlogArticle title={demo.title} />
-      </PublicShell>
-    )
-  }
   const [{ shell }, post] = await Promise.all([getShell(), getBlogPost(id)])
-  if (!post) notFound()
+  if (!post || isPlaceholderContent(post.title, post.excerpt, post.body)) notFound()
   return (
     <PublicShell {...shell}>
       <article className="blog-post">

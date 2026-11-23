@@ -4,10 +4,21 @@ export { apiBaseUrl }
 
 export type BookingUser = { id: string; roles: string[]; email: string; fullName: string }
 
+export type BookingProfile = {
+  firstName: string
+  lastName: string
+  phone: string
+  email: string
+  address: string
+  websiteUrl: string
+  instagramUrl: string
+}
+
 export type Exhibition = {
   id: string
   title: string
   city: string
+  state?: string
   venue: string
   startsAt: string
   endsAt: string
@@ -28,15 +39,19 @@ export type StallType = {
   price: number
   taxRate: number
   includes: string | null
+  active?: boolean | number
 }
 
-export type StallStatus = 'AVAILABLE' | 'BOOKED' | 'HELD' | 'DISABLED'
+export type StallStatus = 'AVAILABLE' | 'BOOKED' | 'HELD' | 'RESERVED' | 'DISABLED'
 
 export type Stall = {
   id: string
   code: string
+  state?: string
   location: string
   sortOrder: number
+  floorX: number
+  floorY: number
   status: StallStatus
   holdExpiresAt: string | null
   type: StallType & { id: string }
@@ -159,7 +174,14 @@ export async function getCurrentUser() {
 
 export const getExhibitions = () => bookingApi<Exhibition[]>('/api/bookings/exhibitions')
 export const getStallTypes = () => bookingApi<StallType[]>('/api/bookings/stall-types')
-export const getStalls = (eventId: string) => bookingApi<Stall[]>(`/api/bookings/events/${encodeURIComponent(eventId)}/stalls`)
+export const getEventStallTypes = (eventId: string, state = '') => bookingApi<StallType[]>(
+  `/api/bookings/events/${encodeURIComponent(eventId)}/stall-types${state ? `?state=${encodeURIComponent(state)}` : ''}`,
+  { cache: 'no-store' },
+)
+export const getStalls = (eventId: string, state = '') => bookingApi<Stall[]>(
+  `/api/bookings/events/${encodeURIComponent(eventId)}/stalls${state ? `?state=${encodeURIComponent(state)}` : ''}`,
+  { cache: 'no-store' },
+)
 export const getMine = () => bookingApi<{ applications: MineApplication[]; bookings: MyBooking[] }>('/api/bookings/mine')
 export const getReceipt = (bookingId: string) => bookingApi<Receipt>(`/api/bookings/bookings/${encodeURIComponent(bookingId)}/receipt`)
 
@@ -202,7 +224,7 @@ export function formatDate(value: string) {
 }
 
 export function stallSize(type: Pick<StallType, 'widthM' | 'depthM'>) {
-  return `${Number(type.widthM)}m x ${Number(type.depthM)}m`
+  return `${Number(type.widthM)}m × ${Number(type.depthM)}m`
 }
 
 export function stallSquareMeters(type: Pick<StallType, 'widthM' | 'depthM'>) {

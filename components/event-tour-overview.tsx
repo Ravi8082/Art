@@ -53,8 +53,8 @@ export function EventTourOverview() {
   return (
     <section className="tour-overview" aria-labelledby="tour-overview-title">
       <header>
-        <p className="eyebrow">Tour overview</p>
-        <h2 id="tour-overview-title">Exhibitions, states &amp; audience</h2>
+        <p className="eyebrow">Management overview</p>
+        <h2 id="tour-overview-title">Tour Overview — Exhibitions, States &amp; Audience</h2>
         <p>On publish, every artist, subscriber and consenting visitor is automatically queued to receive an email.</p>
       </header>
       <div className="tour-audience">

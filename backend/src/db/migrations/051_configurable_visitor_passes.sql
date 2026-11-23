@@ -1,0 +1,22 @@
+ALTER TABLE event_registrations
+  ADD COLUMN pass_tier ENUM('FREE','PAID') NOT NULL DEFAULT 'FREE',
+  ADD COLUMN quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  ADD COLUMN preferred_visit_day DATE NULL,
+  ADD COLUMN payment_status ENUM('NOT_REQUIRED','PENDING','PAID') NOT NULL DEFAULT 'NOT_REQUIRED',
+  ADD COLUMN pass_code VARCHAR(24) NULL,
+  ADD UNIQUE KEY uq_event_registration_pass_code(pass_code);
+
+CREATE TABLE event_pass_configs (
+  event_id CHAR(36) PRIMARY KEY,
+  pass_mode ENUM('FREE','PAID','BOTH') NOT NULL DEFAULT 'BOTH',
+  free_capacity INT UNSIGNED NULL,
+  paid_price DECIMAL(10,2) NOT NULL DEFAULT 499.00,
+  paid_capacity INT UNSIGNED NULL,
+  free_perks JSON NOT NULL,
+  paid_perks JSON NOT NULL,
+  updated_by CHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);

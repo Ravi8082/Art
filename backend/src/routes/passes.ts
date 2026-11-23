@@ -243,7 +243,8 @@ passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next)
     const legacyPassId = reference ? null : passIdFromToken(scanned, signingSecret())
     if (!reference && !legacyPassId) return res.status(404).json({ error: 'This visitor pass could not be found' })
     const [rows] = await pool.query<any[]>(`SELECT q.id,q.token_hash,q.revoked_at,
-      r.status registrationStatus,e.title eventTitle,e.city,e.state,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+      r.status registrationStatus,r.pass_tier passTier,r.quantity,r.preferred_visit_day preferredVisitDay,
+      r.payment_status paymentStatus,r.pass_code passCode,e.title eventTitle,e.city,e.state,e.venue,e.starts_at startsAt,e.ends_at endsAt,
       (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver,
       v.full_name visitorName,c.checked_in_at checkedInAt
       FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id
@@ -257,6 +258,8 @@ passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next)
       ? 'Revoked'
       : pass.registrationStatus !== 'REGISTERED'
         ? 'Cancelled'
+        : pass.paymentStatus === 'PENDING'
+          ? 'Payment pending'
         : pass.checkedInAt
           ? 'Used'
           : pass.dayOver
@@ -272,6 +275,11 @@ passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next)
       venue: pass.venue,
       startsAt: pass.startsAt,
       endsAt: pass.endsAt,
+      passId: pass.passCode,
+      passTier: pass.passTier,
+      quantity: pass.quantity,
+      preferredVisitDay: pass.preferredVisitDay,
+      paymentStatus: pass.paymentStatus,
       status,
       checkedInAt: pass.checkedInAt,
     })
@@ -301,7 +309,8 @@ passesRouter.get('/visitor/passes', ...visitor, async (req: AuthRequest, res, ne
     const [[profiles]] = await pool.query<any[]>('SELECT id FROM visitor_profiles WHERE email=?', [users.email])
     if (!profiles) return res.json({ passes: [] })
     const [passes] = await pool.query<any[]>(`SELECT q.id passId, e.id eventId, e.title, e.city,
-      e.venue, e.starts_at startsAt, e.ends_at endsAt, q.revoked_at revokedAt,
+      e.venue, e.starts_at startsAt, e.ends_at endsAt, r.pass_tier passTier,r.quantity,
+      r.payment_status paymentStatus,r.pass_code passCode,q.revoked_at revokedAt,
       q.reference_code referenceCode, c.checked_in_at checkedInAt
       FROM event_registrations r JOIN events e ON e.id=r.event_id
       JOIN qr_passes q ON q.registration_id=r.id
@@ -312,7 +321,7 @@ passesRouter.get('/visitor/passes', ...visitor, async (req: AuthRequest, res, ne
       passes: passes.map((pass: any) => ({
         ...pass,
         qrData: pass.revokedAt || pass.checkedInAt || !pass.referenceCode ? null : referenceQrValue(pass.referenceCode),
-        status: pass.revokedAt ? 'Revoked' : pass.checkedInAt ? 'Used' : 'Active',
+        status: pass.revokedAt ? 'Revoked' : pass.paymentStatus === 'PENDING' ? 'Payment pending' : pass.checkedInAt ? 'Used' : 'Active',
       })),
     })
   } catch (error) {
@@ -451,7 +460,7 @@ passesRouter.post('/check-in', requireAuth, requirePermission('passes:scan'), ch
 
     const result = await withTransaction(async (connection) => {
       const [passRows] = await connection.query<any[]>(`SELECT q.id,q.token_hash,q.revoked_at,
-        r.status registrationStatus,e.id eventId,e.title eventTitle,e.state eventState,e.starts_at eventStartsAt,
+        r.status registrationStatus,r.payment_status paymentStatus,e.id eventId,e.title eventTitle,e.state eventState,e.starts_at eventStartsAt,
         (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver,
         v.full_name visitorName,v.email visitorEmail,c.checked_in_at checkedInAt
         FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id
@@ -470,6 +479,9 @@ passesRouter.post('/check-in', requireAuth, requirePermission('passes:scan'), ch
         return { status: 403 as const, error: `This pass is for "${pass.eventTitle}"${pass.eventState ? ` (${pass.eventState})` : ''}, which is not assigned to you.` }
       }
       if (pass.registrationStatus !== 'REGISTERED') return { status: 409 as const, error: 'This registration is cancelled' }
+      if (pass.paymentStatus === 'PENDING') {
+        return { status: 402 as const, error: 'VIP payment is still pending. This reservation QR cannot be used for entry yet.' }
+      }
       if (pass.checkedInAt) {
         return { status: 409 as const, error: 'This pass has already been used and is expired', checkedInAt: pass.checkedInAt }
       }

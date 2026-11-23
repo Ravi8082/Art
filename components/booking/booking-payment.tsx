@@ -15,6 +15,10 @@ const paymentMethods = [
 ] as const
 
 type Method = (typeof paymentMethods)[number]['id']
+const availablePaymentMethods = process.env.NODE_ENV === 'production'
+  ? paymentMethods.filter((entry) => entry.id === 'BANK_TRANSFER')
+  : paymentMethods
+const initialPaymentMethod: Method = process.env.NODE_ENV === 'production' ? 'BANK_TRANSFER' : 'ONLINE'
 type Stage = 'select' | 'hold' | 'paying' | 'pending' | 'confirmed'
 
 export function PaymentStage({ application, exhibition, mediaBase, onChanged }: {
@@ -29,7 +33,7 @@ export function PaymentStage({ application, exhibition, mediaBase, onChanged }: 
   const [stage, setStage] = useState<Stage>('select')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [method, setMethod] = useState<Method>('ONLINE')
+  const [method, setMethod] = useState<Method>(initialPaymentMethod)
   const [proof, setProof] = useState<File | null>(null)
   const [booking, setBooking] = useState<{ bookingId: string; bookingRef: string; totalAmount: number; holdExpiresAt: string } | null>(null)
   const [ticket, setTicket] = useState<PaymentTicket | null>(null)
@@ -121,7 +125,7 @@ export function PaymentStage({ application, exhibition, mediaBase, onChanged }: 
   async function releaseHold() {
     setBusy(true); setError('')
     try {
-      await bookingApi(`/api/bookings/admin/bookings/${booking?.bookingId ?? ''}/cancel`, {
+      await bookingApi(`/api/bookings/bookings/${booking?.bookingId ?? ''}/cancel`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'Withdrawn by the exhibitor before payment', refund: false }),
       })
       setBooking(null); setStage('select'); onChanged()
@@ -161,7 +165,7 @@ export function PaymentStage({ application, exhibition, mediaBase, onChanged }: 
               </div>
               <h4>Select Payment Method</h4>
               <div className="bw-methods">
-                {paymentMethods.map((entry) => (
+                {availablePaymentMethods.map((entry) => (
                   <label key={entry.id} className={`bw-method ${method === entry.id ? 'is-active' : ''}`}>
                     <input type="radio" name="bw-method" value={entry.id} checked={method === entry.id} onChange={() => setMethod(entry.id)} />
                     <span><strong>{entry.label}</strong><small>{entry.hint}</small></span>
@@ -202,7 +206,9 @@ export function PaymentStage({ application, exhibition, mediaBase, onChanged }: 
             {selected && <div><dt>GST ({taxRatePercent(selected.type.taxRate)}%)</dt><dd>{formatMoney(totalWithTax(Number(selected.type.price), Number(selected.type.taxRate)).tax)}</dd></div>}
             {selected && <div className="bw-total"><dt>Total Amount</dt><dd>{formatMoney(totalWithTax(Number(selected.type.price), Number(selected.type.taxRate)).total)}</dd></div>}
           </dl>
-          <p className="bw-sandbox">Payments run through a clearly-labelled sandbox adapter — no real money moves in this environment.</p>
+          <p className="bw-sandbox">{process.env.NODE_ENV === 'production'
+            ? 'Bank transfers are verified manually by our team. No payment is processed automatically.'
+            : 'Payments run through a clearly-labelled sandbox adapter — no real money moves in this environment.'}</p>
         </aside>
       </div>
     </div>

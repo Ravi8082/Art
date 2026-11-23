@@ -11,8 +11,15 @@ import { cachePublic } from '../middleware/cache.js'
 
 export const eventsRouter = Router()
 const announceLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
-const eventInput = z.object({ title: z.string().trim().min(2).max(255), description: z.string().trim().min(10), startsAt: z.coerce.date(), endsAt: z.coerce.date(), venue: z.string().trim().min(2).max(255), city: z.string().trim().max(500).default(''), state: z.string().trim().max(255).default(''), registrationDeadline: z.coerce.date().nullable().optional() }).refine((value) => value.endsAt > value.startsAt, 'End must be after start')
+const eventInput = z.object({ title: z.string().trim().min(2).max(255), description: z.string().trim().min(10), startsAt: z.coerce.date(), endsAt: z.coerce.date(), venue: z.string().trim().min(2).max(255), city: z.string().trim().max(500).default(''), state: z.string().trim().max(700).default(''), registrationDeadline: z.coerce.date().nullable().optional() }).refine((value) => value.endsAt > value.startsAt, 'End must be after start')
 const stallPlan = z.array(z.object({ stallTypeId: z.string().uuid(), count: z.coerce.number().int().min(0).max(500) })).max(20).default([])
+const stateStallPlan = z.array(z.object({
+  state: z.string().trim().min(1).max(120),
+  stallTypeId: z.string().uuid(),
+  price: z.coerce.number().min(0).max(10000000),
+  taxRate: z.coerce.number().refine((value) => value === 18, 'GST rate must be 18%').default(18),
+  slots: z.coerce.number().int().min(0).max(500),
+})).max(500).default([])
 const slugify = (value: string) => `${value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${crypto.randomBytes(3).toString('hex')}`
 
 eventsRouter.get('/', cachePublic(30), async (_req, res, next) => {
@@ -54,6 +61,7 @@ eventsRouter.get('/', cachePublic(30), async (_req, res, next) => {
 })
 
 const splitList = (value: unknown) => String(value ?? '').split(/[,;/]|\band\b/i).map((part) => part.replace(/^(pan india|multiple states)\s*[—-]\s*/i, '').trim()).filter(Boolean)
+const splitStates = (value: unknown) => String(value ?? '').split(/[,;/]/).map((part) => part.trim()).filter(Boolean)
 
 eventsRouter.get('/admin/overview', requireAuth, requirePermission('events:publish'), async (_req, res, next) => {
   try {
@@ -81,7 +89,7 @@ eventsRouter.get('/admin/overview', requireAuth, requirePermission('events:publi
         ...event,
         announceSummary: typeof event.announceSummary === 'string' ? JSON.parse(event.announceSummary) : event.announceSummary,
         cities: splitList(event.city),
-        states: splitList(event.state),
+        states: splitStates(event.state),
         visitorCities: byCity.filter((row) => row.eventId === event.id).map((row) => ({ city: row.city, total: Number(row.total) })),
       })),
     })
@@ -111,7 +119,19 @@ eventsRouter.post('/', requireAuth, requirePermission('events:create'), async (r
   try {
     const value = eventInput.parse(req.body)
     const plan = stallPlan.parse(req.body?.stalls ?? []).filter((item) => item.count > 0)
-    if (plan.length) {
+    const statePlan = stateStallPlan.parse(req.body?.statePricing ?? [])
+    const selectedStates = value.state.split(/[,;/]/).map((state) => state.trim()).filter(Boolean)
+    const stateKeys = new Set<string>()
+    for (const item of statePlan) {
+      if (!selectedStates.includes(item.state)) throw Object.assign(new Error(`${item.state} is not selected for this exhibition`), { status: 400 })
+      const key = `${item.state.toLowerCase()}:${item.stallTypeId}`
+      if (stateKeys.has(key)) throw Object.assign(new Error(`Duplicate stall pricing row for ${item.state}`), { status: 400 })
+      stateKeys.add(key)
+    }
+    if (plan.length && statePlan.length) return res.status(400).json({ error: 'Use either the legacy stall plan or state-wise pricing, not both' })
+    const configuredSlots = statePlan.reduce((sum, item) => sum + item.slots, 0)
+    if (configuredSlots > 10000) return res.status(400).json({ error: 'An exhibition can have up to 10,000 configured stall slots' })
+    if (plan.length || statePlan.length) {
       const granted = await new Promise<boolean>((resolve) => {
         void requirePermission('bookings:manage')(req, res, (error?: unknown) => resolve(!error)).then(() => { if (res.headersSent) resolve(false) })
       })
@@ -121,12 +141,36 @@ eventsRouter.post('/', requireAuth, requirePermission('events:create'), async (r
     const stallsCreated = await withTransaction(async (db) => {
       await db.query('INSERT INTO events(id,title,slug,description,starts_at,ends_at,venue,city,state,registration_deadline,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,\'PENDING_APPROVAL\',?)', [id, value.title, slugify(value.title), value.description, value.startsAt, value.endsAt, value.venue, value.city, value.state, value.registrationDeadline ?? null, req.user!.id])
       let order = 0
-      for (const item of plan) {
-        const [types] = await db.query<any[]>('SELECT code FROM stall_types WHERE id=? AND active=1', [item.stallTypeId])
-        if (!types[0]) throw Object.assign(new Error('Unknown stall type'), { status: 400 })
-        for (let n = 1; n <= item.count; n += 1) {
-          order += 1
-          await db.query('INSERT INTO stalls(id,event_id,stall_type_id,code,sort_order) VALUES (?,?,?,?,?)', [crypto.randomUUID(), id, item.stallTypeId, `${String(types[0].code).slice(0, 13)}-${String(n).padStart(3, '0')}`, order])
+      if (statePlan.length) {
+        const stallRows: (string | number)[][] = []
+        for (const item of statePlan) {
+          const [types] = await db.query<any[]>('SELECT code FROM stall_types WHERE id=? AND active=1', [item.stallTypeId])
+          if (!types[0]) throw Object.assign(new Error('Unknown or inactive stall type'), { status: 400 })
+          await db.query(
+            `INSERT INTO event_state_stall_pricing(event_id,state,stall_type_id,price,tax_rate,slot_count,public_visible)
+             VALUES (?,?,?,?,?,?,1)`,
+            [id, item.state, item.stallTypeId, item.price, item.taxRate, item.slots],
+          )
+          const typeCode = `T${item.stallTypeId.replace(/-/g, '').slice(0, 7).toUpperCase()}`
+          const stateCode = crypto.createHash('sha1').update(item.state).digest('hex').slice(0, 6).toUpperCase()
+          for (let n = 1; n <= item.slots; n += 1) {
+            order += 1
+            stallRows.push([crypto.randomUUID(), id, item.stallTypeId, `${typeCode}-${stateCode}-${String(n).padStart(3, '0')}`, item.state, order])
+          }
+        }
+        for (let start = 0; start < stallRows.length; start += 500) {
+          const batch = stallRows.slice(start, start + 500)
+          const placeholders = batch.map(() => '(?,?,?,?,?,?)').join(',')
+          await db.query(`INSERT INTO stalls(id,event_id,stall_type_id,code,state,sort_order) VALUES ${placeholders}`, batch.flat())
+        }
+      } else {
+        for (const item of plan) {
+          const [types] = await db.query<any[]>('SELECT code FROM stall_types WHERE id=? AND active=1', [item.stallTypeId])
+          if (!types[0]) throw Object.assign(new Error('Unknown stall type'), { status: 400 })
+          for (let n = 1; n <= item.count; n += 1) {
+            order += 1
+            await db.query('INSERT INTO stalls(id,event_id,stall_type_id,code,sort_order) VALUES (?,?,?,?,?)', [crypto.randomUUID(), id, item.stallTypeId, `${String(types[0].code).slice(0, 13)}-${String(n).padStart(3, '0')}`, order])
+          }
         }
       }
       return order

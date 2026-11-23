@@ -28,13 +28,11 @@ function hasValidFileSignature(contentType: string, data: Buffer) {
   return hasValidMediaSignature(contentType, data)
 }
 
-function newRefCode() {
-  const now = new Date()
-  const period = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+export function newRefCode(now = new Date()) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let suffix = ''
   for (let index = 0; index < 4; index += 1) suffix += alphabet[crypto.randomInt(alphabet.length)]
-  return `ENQ-${period}-${suffix}`
+  return `THOA-ENQ-${now.getFullYear()}-${suffix}`
 }
 
 const submitSchema = z.object({

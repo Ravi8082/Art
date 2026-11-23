@@ -22,6 +22,13 @@ test('without BACKEND_API_URL no proxy is configured (local development talks to
   const { config, rewrites } = await load({})
   assert.deepEqual(rewrites, [])
   assert.deepEqual(config.env, {})
+  assert.equal(config.images.unoptimized, false)
+  assert.deepEqual(config.images.remotePatterns, [{
+    protocol: 'http',
+    hostname: 'localhost',
+    port: '4000',
+    pathname: '/api/**',
+  }])
 })
 
 test('BACKEND_API_URL proxies /api/* to the backend, tolerating a trailing slash', async () => {
@@ -49,4 +56,15 @@ test('security headers are still applied to every route', async () => {
   const [rule] = await config.headers()
   assert.equal(rule.source, '/(.*)')
   assert.ok(rule.headers.some((h) => h.key === 'Strict-Transport-Security'))
+  assert.ok(rule.headers.some((h) => h.key === 'Permissions-Policy' && h.value.includes('camera=(self)')))
+})
+
+test('the image optimizer is limited to the configured backend API origin', async () => {
+  const { config } = await load({ BACKEND_API_URL: 'https://haat-backend.onrender.com/base/' })
+  assert.deepEqual(config.images.remotePatterns, [{
+    protocol: 'https',
+    hostname: 'haat-backend.onrender.com',
+    port: '',
+    pathname: '/base/api/**',
+  }])
 })

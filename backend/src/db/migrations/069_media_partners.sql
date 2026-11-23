@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS media_partners (
+  id CHAR(36) PRIMARY KEY,
+  name VARCHAR(180) NOT NULL UNIQUE,
+  category VARCHAR(80) NULL,
+  logo_url VARCHAR(1024) NULL,
+  website_url VARCHAR(500) NULL,
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  show_on_home BOOLEAN NOT NULL DEFAULT TRUE,
+  show_on_about BOOLEAN NOT NULL DEFAULT TRUE,
+  show_on_exhibitions BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_media_partners_publish (is_active, sort_order)
+);
+
+INSERT IGNORE INTO media_partners (id, name, category, sort_order) VALUES
+  (UUID(), 'Signpost India', 'Outdoor Media', 1),
+  (UUID(), 'HT City Lifestyle', 'Print & Lifestyle', 2),
+  (UUID(), 'Global Advertisers Pvt. Ltd.', 'Outdoor Media', 3),
+  (UUID(), 'Colour Canvas', 'Art & Culture', 4),
+  (UUID(), 'Proactive', 'Media Partner', 5),
+  (UUID(), 'The Times 24', 'Digital News', 6),
+  (UUID(), 'The Startup Story', 'Digital Press', 7),
+  (UUID(), 'True Story', 'Digital Press', 8),
+  (UUID(), 'Bombay Times', 'Print & Lifestyle', 9),
+  (UUID(), 'Justice Express', 'News Network', 10),
+  (UUID(), 'The National Daily', 'National Press', 11),
+  (UUID(), 'The National Age', 'National Press', 12),
+  (UUID(), 'The MSME News', 'Business Press', 13),
+  (UUID(), 'The Grand Media', 'Media Network', 14),
+  (UUID(), 'The Big India', 'Digital News', 15),
+  (UUID(), 'The 24 Nation', 'News Network', 16),
+  (UUID(), 'Storywriter', 'Editorial Press', 17),
+  (UUID(), 'Real News', 'News Network', 18),
+  (UUID(), 'News 21', 'Broadcast & Digital', 19),
+  (UUID(), 'News Scoop', 'Digital Press', 20),
+  (UUID(), 'The India Herald', 'National Press', 21);

@@ -22,6 +22,11 @@ export function ContactIntro() {
   }
 
   useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem('thoa_intro_seen') === 'true') return
+    } catch (error) {
+      console.error('[contact-intro] Could not read session storage', error)
+    }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     document.body.classList.add('ct-intro-lock')
     setPhase('entering')

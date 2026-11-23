@@ -1,13 +1,45 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { ArrowUpRight } from 'lucide-react'
 import { apiBaseUrl, getShell } from '@/lib/api'
+import { getArtistDirectory, getArtistDirectoryProfile } from '@/lib/booking-server'
 import { PublicShell } from '@/components/public-shell'
+import { ArtistMonograph } from '@/components/artist/artist-monograph'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 30
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const directory = await getArtistDirectoryProfile(id)
+  if (directory) {
+    return {
+      title: `${directory.artist.displayName} · The Haat of Art`,
+      description: directory.artist.bio.slice(0, 160),
+      alternates: { canonical: `/artists/${encodeURIComponent(id)}` },
+    }
+  }
+  const artist = (await getShell()).content.artists.find((item) => item.id === id)
+  if (!artist) return { robots: { index: false, follow: true } }
+  return {
+    title: `${artist.name} · The Haat of Art`,
+    description: artist.bio.slice(0, 160),
+    alternates: { canonical: `/artists/${encodeURIComponent(id)}` },
+  }
+}
 
 export default async function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const directory = await getArtistDirectoryProfile(id)
+  if (directory) {
+    const { artist, artworks } = directory
+    const moreArtists = (await getArtistDirectory()).filter((item) => item.id !== artist.id).slice(0, 3)
+    return (
+      <PublicShell>
+        <ArtistMonograph artist={artist} artworks={artworks} moreArtists={moreArtists} />
+      </PublicShell>
+    )
+  }
   const { content, shell } = await getShell()
   const artist = content.artists.find((item) => item.id === id)
   if (!artist) notFound()

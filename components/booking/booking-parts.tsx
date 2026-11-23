@@ -170,10 +170,31 @@ export function CityTabs({ cities, active, onChange }: { cities: string[]; activ
   return (
     <div className="bw-citytabs" role="tablist" aria-label="Filter exhibitions by city">
       {['All', ...cities].map((city) => (
-        <button key={city} type="button" role="tab" aria-selected={active === city} className={active === city ? 'is-active' : ''} onClick={() => onChange(city)}>{city}</button>
+        <button key={city} type="button" role="tab" aria-selected={active === city} className={active === city ? 'is-active' : ''} onClick={() => onChange(city)}>
+          {city.toLowerCase().startsWith('pan india') ? 'Pan India Tour' : city}
+        </button>
       ))}
     </div>
   )
+}
+
+function exhibitionPhoto(exhibition: Exhibition, mediaBase: string) {
+  const edition = `${exhibition.city} ${exhibition.title}`.toLowerCase()
+  if (edition.includes('pan india') || edition.includes('tour 2027')) {
+    return { src: '/media/ceramics.jpg', alt: 'Indian ceramics and crafts presented as exhibition artwork' }
+  }
+  if (edition.includes('indore')) {
+    return { src: '/media/hero-exhibition.jpg', alt: 'Visitors exploring artwork at a large exhibition gallery' }
+  }
+  if (edition.includes('mumbai')) {
+    return { src: '/media/exhibition-gallery.jpeg', alt: 'Artworks displayed in a contemporary exhibition gallery' }
+  }
+  if (edition.includes('bengaluru') || edition.includes('bangalore')) {
+    return { src: '/media/installation.jpeg', alt: 'Sculptural installation in an exhibition gallery' }
+  }
+
+  const cover = exhibition.media[0]
+  return cover ? { src: `${mediaBase}${cover.url}`, alt: cover.altText || exhibition.title } : null
 }
 
 export function ExhibitionCards({ exhibitions, selectedIds, onToggle, mediaBase }: {
@@ -186,24 +207,32 @@ export function ExhibitionCards({ exhibitions, selectedIds, onToggle, mediaBase 
   return (
     <div className="bw-cards">
       {exhibitions.map((exhibition) => {
-        const cover = exhibition.media[0]
+        const cover = exhibitionPhoto(exhibition, mediaBase)
         const selected = selectedIds.includes(exhibition.id)
+        const edition = exhibition.title.toLowerCase().includes('tour 2027')
+          ? 'Pan India Tour 2027'
+          : exhibition.city || 'Upcoming Edition'
         return (
           <article key={exhibition.id} className={`bw-card ${selected ? 'is-selected' : ''}`}>
             <div className="bw-card-media">
-              {cover ? <img src={`${mediaBase}${cover.url}`} alt={cover.altText || exhibition.title} loading="lazy" />
+              {cover ? <img src={cover.src} alt={cover.alt} loading="lazy" />
                 : <span className="bw-card- placeholder" aria-hidden="true">THOA</span>}
+              <span className="bw-card-edition">{edition}</span>
               {!exhibition.registrationOpen && <span className="bw-card-closed">Entries closed</span>}
             </div>
             <div className="bw-card-body">
-              <h3>{exhibition.title}</h3>
-              <p className="bw-card-dates"><CalendarIcon /> {formatEventDates(exhibition.startsAt, exhibition.endsAt)}</p>
-              <p className="bw-card-venue"><PinIcon /> {exhibition.venue || exhibition.city || 'Venue to be confirmed'}</p>
-              <p className="bw-card-stalls">{exhibition.totalStalls > 0 ? `${exhibition.availableStalls} of ${exhibition.totalStalls} stalls available` : 'Stall slots will be announced soon'}</p>
-              <div className="bw-card-actions">
-                <button type="button" className="bw-btn-outline" onClick={() => onToggle(exhibition.id)} disabled={!exhibition.registrationOpen} aria-pressed={selected}>
-                  {selected ? 'Selected ✓' : 'Select exhibition'}
-                </button>
+              <div className="bw-card-details">
+                <h3>{exhibition.title}</h3>
+                <p className="bw-card-dates"><CalendarIcon /> {formatEventDates(exhibition.startsAt, exhibition.endsAt)}</p>
+                <p className="bw-card-venue"><PinIcon /> {exhibition.venue || exhibition.city || 'Venue to be confirmed'}</p>
+              </div>
+              <div className="bw-card-footer">
+                <p className="bw-card-stalls">{exhibition.totalStalls > 0 ? `${exhibition.availableStalls} of ${exhibition.totalStalls} stalls available` : 'Stall slots will be announced soon'}</p>
+                <div className="bw-card-actions">
+                  <button type="button" className="bw-btn-primary" onClick={() => onToggle(exhibition.id)} disabled={!exhibition.registrationOpen} aria-pressed={selected}>
+                    {selected ? 'Selected ✓' : 'Select exhibition'}
+                  </button>
+                </div>
               </div>
             </div>
           </article>
@@ -268,19 +297,52 @@ export function categoryLabel(category: string) {
   return category === 'INDIVIDUAL' ? 'Individual Stall' : category === 'GROUP' ? 'Group Stall' : category === 'GALLERY' ? 'Gallery Space' : category
 }
 
-export function StallMap({ stalls, selectedId, onSelect, coverUrl, coverAlt }: {
+function pluralStallName(name: string) {
+  if (/space$/i.test(name)) return name.replace(/space$/i, 'Spaces')
+  if (/stall$/i.test(name)) return name.replace(/stall$/i, 'Stalls')
+  return `${name}s`
+}
+
+function floorPlanHeading(location: string, type: StallType) {
+  const normalize = (value: string) => value.toLowerCase().replace(/[×✕]/g, 'x').replace(/\s+/g, ' ').trim()
+  const typeName = normalize(type.name)
+  const dimensions = normalize(stallSize(type))
+  const hall = location.split(/\s+[—–-]\s+/)
+    .filter((part) => {
+      const segment = normalize(part)
+      return !segment.includes(typeName) && !segment.includes(dimensions)
+    })
+    .join(' — ')
+    .trim()
+  return `${hall ? `${hall} — ` : ''}${pluralStallName(type.name)} (${stallSize(type)})`
+}
+
+export function StallMap({ stalls, selectedId, onSelect, coverUrl, coverAlt, preferredCategory }: {
   stalls: Stall[]
   selectedId: string
   onSelect: (id: string) => void
   coverUrl?: string
   coverAlt?: string
+  preferredCategory?: StallType['category']
 }) {
+  const [matchingOnly, setMatchingOnly] = useState(false)
+  const selected = stalls.find((stall) => stall.id === selectedId) ?? null
+  const selectedPrice = selected
+    ? totalWithTax(Number(selected.type.price), Number(selected.type.taxRate))
+    : null
+  const visibleStalls = matchingOnly && preferredCategory
+    ? stalls.filter((stall) => stall.type.category === preferredCategory)
+    : stalls
   const groups = new Map<string, Stall[]>()
-  for (const stall of stalls) {
+  for (const stall of visibleStalls) {
     const key = `${stall.type.name}|${stall.location || ''}`
     groups.set(key, [...(groups.get(key) ?? []), stall])
   }
-  const selected = stalls.find((stall) => stall.id === selectedId) ?? null
+
+  function changeFilter(matching: boolean) {
+    if (matching && selected && preferredCategory && selected.type.category !== preferredCategory) onSelect('')
+    setMatchingOnly(matching)
+  }
 
   return (
     <div className="bw-map">
@@ -290,27 +352,44 @@ export function StallMap({ stalls, selectedId, onSelect, coverUrl, coverAlt }: {
         <span className="bw-key is-booked">Booked</span>
         <span className="bw-key is-disabled">Not Available</span>
       </div>
+      {preferredCategory && (
+        <div className="bw-map-filter" role="group" aria-label="Filter stalls by your preference">
+          <span>Show:</span>
+          <button type="button" className={!matchingOnly ? 'is-active' : ''} aria-pressed={!matchingOnly} onClick={() => changeFilter(false)}>All Stalls</button>
+          <button type="button" className={matchingOnly ? 'is-active' : ''} aria-pressed={matchingOnly} onClick={() => changeFilter(true)}>Matching My Preference</button>
+        </div>
+      )}
       <div className="bw-map-main">
         {!stalls.length && <p className="bw-empty">The floor plan for this exhibition is being prepared. Please check back shortly.</p>}
+        {stalls.length > 0 && !visibleStalls.length && <p className="bw-empty">No booths match this stall tier yet. Choose All Stalls or request priority allocation.</p>}
         {[...groups.entries()].map(([key, group]) => {
           const [typeName, location] = key.split('|')
           const type = group[0]?.type
           return (
             <section key={key} className="bw-hall">
-              <h4>{location ? `${location} — ${typeName}` : typeName}{type && <small> ({stallSize(type)} m)</small>}</h4>
+              <h4>{type ? floorPlanHeading(location, type) : location || typeName}</h4>
               <div className="bw-cells">
-                {group.map((stall) => {
+                {group.map((stall, index) => {
                   const isSelected = stall.id === selectedId
                   const selectable = stall.status === 'AVAILABLE'
+                  const isPreferred = Boolean(preferredCategory && stall.type.category === preferredCategory)
+                  const column = stall.floorX > 0 ? Math.min(stall.floorX, 4) : (index % 4) + 1
+                  const row = stall.floorY > 0 ? stall.floorY : Math.floor(index / 4) + 1
+                  const preferenceClass = preferredCategory ? isPreferred ? ' is-preferred' : ' is-dimmed' : ''
                   return (
                     <button
                       key={stall.id} type="button"
-                      className={`bw-cell is-${stall.status.toLowerCase()} ${isSelected ? 'is-selected' : ''}`}
+                      className={`bw-cell is-${stall.status.toLowerCase()}${isSelected ? ' is-selected' : ''}${preferenceClass}`}
                       disabled={!selectable && !isSelected}
                       aria-pressed={isSelected}
-                      title={selectable ? `Select stall ${stall.code}` : `Stall ${stall.code} — ${stall.status.toLowerCase()}`}
+                      aria-label={`Booth ${stall.code}, ${stall.status.toLowerCase()}${isPreferred ? ', matches your preference' : ''}`}
+                      title={selectable ? `Select booth ${stall.code}${isPreferred ? ' — matches your preference' : ''}` : `Booth ${stall.code} — ${stall.status.toLowerCase()}`}
+                      style={{ gridColumnStart: column, gridRowStart: row }}
                       onClick={() => onSelect(isSelected ? '' : stall.id)}
-                    >{stall.code}</button>
+                    >
+                      <span>{stall.code}</span>
+                      {isPreferred && <small className="bw-cell-match">Match</small>}
+                    </button>
                   )
                 })}
               </div>
@@ -318,18 +397,18 @@ export function StallMap({ stalls, selectedId, onSelect, coverUrl, coverAlt }: {
           )
         })}
       </div>
-      <aside className="bw-selected">
-        {selected ? (
+      <aside className="bw-selected" aria-live="polite" aria-label="Selected booth details">
+        {selected && selectedPrice ? (
           <>
-            <h4>Selected Stall: {selected.code}</h4>
+            <h4>Booth {selected.code}</h4>
             {coverUrl && <img className="bw-selected-media" src={coverUrl} alt={coverAlt || `Stall ${selected.code}`} />}
             <dl className="bw-specs">
-              <div><dt>Stall Type</dt><dd>{selected.type.name}</dd></div>
-              <div><dt>Size</dt><dd>{stallSize(selected.type)} ({stallSquareMeters(selected.type)} sq m)</dd></div>
-              <div><dt>Price</dt><dd>{formatMoney(selected.type.price)}</dd></div>
-              <div><dt>GST</dt><dd>{taxRatePercent(selected.type.taxRate)}%</dd></div>
+              <div><dt>Booth Code</dt><dd>{selected.code}</dd></div>
+              <div><dt>Stall Tier</dt><dd>{selected.type.name}</dd></div>
+              <div><dt>Dimensions</dt><dd>{stallSize(selected.type)} ({stallSquareMeters(selected.type)} sq m)</dd></div>
+              <div><dt>Price breakdown</dt><dd>{formatMoney(selectedPrice.base)} + {formatMoney(selectedPrice.tax)} GST ({taxRatePercent(selected.type.taxRate)}%) = {formatMoney(selectedPrice.total)}</dd></div>
               <div><dt>Location</dt><dd>{selected.location || 'Main hall'}</dd></div>
-              <div className="bw-specs-total"><dt>Total Amount</dt><dd>{formatMoney(totalWithTax(Number(selected.type.price), Number(selected.type.taxRate)).total)}</dd></div>
+              <div className="bw-specs-total"><dt>Total Amount</dt><dd>{formatMoney(selectedPrice.total)}</dd></div>
             </dl>
             {selected.type.includes && <p className="bw-includes"><strong>Includes:</strong> {selected.type.includes}</p>}
           </>
@@ -344,8 +423,9 @@ export function StallMap({ stalls, selectedId, onSelect, coverUrl, coverAlt }: {
   )
 }
 
-export function SignInPanel({ onSuccess, busy, error, onSignIn, onRegister }: {
+export function SignInPanel({ onSuccess, onModeChange, busy, error, onSignIn, onRegister }: {
   onSuccess: () => void
+  onModeChange: () => void
   busy: boolean
   error: string
   onSignIn: (email: string, password: string) => Promise<void>
@@ -356,6 +436,13 @@ export function SignInPanel({ onSuccess, busy, error, onSignIn, onRegister }: {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [local, setLocal] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const signingIn = mode === 'in'
+  function changeMode(nextMode: 'in' | 'up') {
+    setLocal('')
+    setMode(nextMode)
+    onModeChange()
+  }
   async function submit(event: FormEvent) {
     event.preventDefault()
     setLocal('')
@@ -368,29 +455,62 @@ export function SignInPanel({ onSuccess, busy, error, onSignIn, onRegister }: {
     }
   }
   return (
-    <form className="bw-signin" onSubmit={submit}>
-      <h4>{mode === 'up' ? 'Create your exhibitor account' : 'Sign in to continue'}</h4>
-      <p>Stall applications and payments are linked to your exhibitor account, so we need you signed in before submitting.</p>
-      {mode === 'up' && (
-        <label>Name on the account
-          <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" required minLength={2} maxLength={160} />
-        </label>
+    <form className={`bw-signin${signingIn ? ' is-invitation' : ''}`} onSubmit={submit}>
+      {signingIn ? (
+        <>
+          <p className="bw-signin-eyebrow">A CURATED INVITATION ✦</p>
+          <h4>Every Exhibition Needs Its Muse</h4>
+          <p className="bw-signin-subtitle">Sign in to save your spot—because our gallery walls feel incomplete without your art.</p>
+        </>
+      ) : (
+        <>
+          <p className="bw-signin-eyebrow">JOIN THE COLLECTIVE ✦</p>
+          <h4>Begin Your Exhibition Story</h4>
+          <p className="bw-signin-subtitle">Create your artist pass in seconds—we can&apos;t wait to showcase your work on our gallery walls.</p>
+        </>
       )}
-      <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required maxLength={255} /></label>
-      <label>Password
-        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)}
-          autoComplete={mode === 'up' ? 'new-password' : 'current-password'} required minLength={mode === 'up' ? 12 : 1} maxLength={128} />
+      {mode === 'up' && (
+        <div className="bw-signin-field">
+          <label htmlFor="booking-signin-name">Name on the account</label>
+          <input id="booking-signin-name" value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name"
+            placeholder="Your Artist or Studio Name" required minLength={2} maxLength={160} />
+        </div>
+      )}
+      <div className="bw-signin-field">
+        <label htmlFor="booking-signin-email">{signingIn ? 'Artist Email' : 'Email'}</label>
+        <input id="booking-signin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)}
+          autoComplete="username" placeholder={signingIn ? 'you@yourmasterpiece.com' : 'Email'} required maxLength={255} />
+      </div>
+      <div className="bw-signin-field">
+        <label htmlFor="booking-signin-password">{signingIn ? 'Studio Passkey' : 'Password'}</label>
+        <div className="bw-password-input-wrap">
+          <input id="booking-signin-password" type={showPassword ? 'text' : 'password'} value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
+            placeholder={signingIn ? 'Your secret studio key...' : 'Password'}
+            required minLength={mode === 'up' ? 12 : 1} maxLength={128} />
+          <button className="bw-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'}
+            aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 12s3.4-7 9.5-7 9.5 7 9.5 7-3.4 7-9.5 7-9.5-7-9.5-7Z" />
+              <circle cx="12" cy="12" r="3" />
+              {showPassword && <path d="m4 4 16 16" />}
+            </svg>
+          </button>
+        </div>
         {mode === 'up' && <small className="bw-hint">At least 12 characters.</small>}
-      </label>
+      </div>
       <button className="bw-btn-primary" type="submit" disabled={busy}>
-        {busy ? 'Working…' : mode === 'up' ? 'Create account & continue' : 'Sign in'}
+        <span>{busy ? 'Working…' : mode === 'up' ? 'Create Artist Pass & Continue → ✦' : 'Step Into the Gallery →'}</span>
+        {signingIn && <span className="bw-signin-cta-sparkle" aria-hidden="true">✦</span>}
       </button>
       {(local || error) && <p className="bw-field-error" role="alert">{local || error}</p>}
       <p className="bw-hint">
         {mode === 'up'
-          ? <>Already registered? <button type="button" className="bw-linkbtn" onClick={() => { setLocal(''); setMode('in') }}>Sign in instead</button></>
-          : <>New exhibitor? <button type="button" className="bw-linkbtn" onClick={() => { setLocal(''); setMode('up') }}>Create an account</button> — it takes a minute and the stall fee is only paid after approval. <a href="/password-reset">Forgot password?</a></>}
+          ? <>Already registered? <button type="button" className="bw-linkbtn" onClick={() => changeMode('in')}>Sign in instead</button></>
+          : <>New to the gallery? <button type="button" className="bw-linkbtn" onClick={() => changeMode('up')}>Create an account</button> — it takes a minute, and you only pay once we fall in love with your art.</>}
       </p>
+      {signingIn && <a className="bw-signin-reset" href="/password-reset">Forgot password?</a>}
     </form>
   )
 }

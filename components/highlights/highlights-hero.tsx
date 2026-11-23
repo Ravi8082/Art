@@ -1,16 +1,15 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { SafeImage } from '@/components/home/safe-image'
-import { highlightsHero } from '@/lib/demo-highlights'
 
 export function HighlightsHero() {
   return (
     <section className="hl-hero">
-      <SafeImage src={highlightsHero.image} alt="Art studio with a painter at work (demo image)" fallback="/media/exhibition-gallery.jpeg" />
+      <SafeImage src="/media/installation.jpeg" alt="A contemporary art installation" />
       <div className="hl-hero-copy">
-        <h1>{highlightsHero.title}</h1>
-        <p>{highlightsHero.text}</p>
-        <Link className="th-btn" href={highlightsHero.cta.href}>{highlightsHero.cta.label} <ArrowRight size={14} /></Link>
+        <h1>Exhibition Highlights</h1>
+        <p>Explore published moments from The Haat of Art exhibitions.</p>
+        <Link className="th-btn" href="/exhibitions">Explore exhibitions <ArrowRight size={14} /></Link>
       </div>
     </section>
   )

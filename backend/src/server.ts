@@ -10,17 +10,24 @@ import { homepageRouter } from './routes/homepage.js'
 import { contentRouter } from './routes/content.js'
 import { newsletterRouter } from './routes/newsletter.js'
 import { eventsRouter } from './routes/events.js'
-import { aboutRouter } from './routes/about.js'
+import { aboutRouter, adminAboutRouter } from './routes/about.js'
 import { enquiriesRouter } from './routes/enquiries.js'
 import { guestsRouter } from './routes/guests.js'
+import { adminInvitedGuestsRouter, invitedGuestsRouter } from './routes/invited-guests.js'
+import { adminEventFlowRouter, eventFlowRouter } from './routes/event-flow.js'
 import { bookingsRouter } from './routes/bookings.js'
 import { dashboardRouter } from './routes/dashboard.js'
 import { passesRouter } from './routes/passes.js'
 import { artistProfileRouter } from './routes/artist-profile.js'
+import { artistDirectoryRouter } from './routes/artist-directory.js'
+import { exhibitionArchiveRouter } from './routes/exhibition-archive.js'
 import { accountRouter } from './routes/account.js'
 import { teamRouter } from './routes/team.js'
 import { visitorReportRouter } from './routes/visitor-report.js'
-import { siteSettingsRouter } from './routes/site-settings.js'
+import { contactSettingsRouter, highlightsRouter, siteSettingsRouter } from './routes/site-settings.js'
+import { exhibitionsRouter, visitorPassesRouter } from './routes/visitor-passes.js'
+import { conciergeRouter } from './routes/concierge.js'
+import { adminMediaPartnersRouter, mediaPartnersRouter } from './routes/media-partners.js'
 import { startOutboxWorker } from './services/outbox.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
@@ -62,16 +69,31 @@ app.use('/api/content', contentRouter)
 app.use('/api/newsletter', newsletterRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api/about', aboutRouter)
+app.use('/api/admin/about', adminAboutRouter)
 app.use('/api/enquiries', enquiriesRouter)
 app.use('/api/guests', guestsRouter)
+app.use('/api/invited-guests', invitedGuestsRouter)
+app.use('/api/admin/invited-guests', adminInvitedGuestsRouter)
+app.use('/api/event-flow', eventFlowRouter)
+app.use('/api/admin/event-flow', adminEventFlowRouter)
+app.use('/api/media-partners', mediaPartnersRouter)
+app.use('/api/admin/media-partners', adminMediaPartnersRouter)
 app.use('/api/bookings', bookingsRouter)
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api/passes', passesRouter)
 app.use('/api/artist-profile', artistProfileRouter)
+app.use('/api/artists', artistDirectoryRouter)
+app.use('/api/exhibition-archive', exhibitionArchiveRouter)
 app.use('/api/account', accountRouter)
 app.use('/api/team', teamRouter)
 app.use('/api/visitor-report', visitorReportRouter)
 app.use('/api/site-settings', siteSettingsRouter)
+app.use('/api/settings/contact', contactSettingsRouter)
+app.use('/api/highlights', highlightsRouter)
+app.use('/api/exhibitions', exhibitionsRouter)
+app.use('/api/contact', enquiriesRouter)
+app.use('/api/visitor-passes', visitorPassesRouter)
+app.use('/api/concierge', conciergeRouter)
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }))
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof ZodError) return res.status(400).json({ error: 'Invalid request', issues: error.issues })

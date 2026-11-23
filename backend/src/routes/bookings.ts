@@ -5,6 +5,7 @@ import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
 import { queueEmail } from '../services/mailer.js'
 import { recordAudit } from '../services/audit.js'
+import { paymentModeFor } from '../services/payment-mode.js'
 import { storeAsset } from './about.js'
 
 export const bookingsRouter = Router()
@@ -14,11 +15,17 @@ const manage = [requireAuth, requirePermission('bookings:manage')] as const
 const uploadBody = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'], limit: '25mb' })
 
 const HOLD_MINUTES = Math.max(0.05, Number(process.env.BOOKING_HOLD_MINUTES ?? 1440))
-const webhookSecret = () => process.env.PAYMENT_WEBHOOK_SECRET ?? 'development-webhook-secret'
+const webhookSecret = () => {
+  const secret = process.env.PAYMENT_WEBHOOK_SECRET
+  if (secret) return secret
+  if (process.env.NODE_ENV === 'production') throw new Error('PAYMENT_WEBHOOK_SECRET must be configured in production')
+  return 'development-webhook-secret'
+}
 const signWebhook = (idempotencyKey: string, transactionRef: string, amount: number, status: string) =>
   crypto.createHmac('sha256', webhookSecret()).update(`${idempotencyKey}.${transactionRef}.${amount}.${status}`).digest('hex')
 
 const refCode = (prefix: string) => `${prefix}-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
+const splitStates = (value: unknown) => String(value ?? '').split(/[,;/]/).map((part) => part.trim()).filter(Boolean)
 
 // Discriminated transaction results: `ok` is a literal so narrowing is reliable.
 const fail = (status: number, error: string) => ({ ok: false as const, status, error })
@@ -36,13 +43,17 @@ async function notify(db: Queryable, entry: { applicationId?: string; bookingId?
 
 // ---------- shared selectors ----------
 const stallSelect = `
-  SELECT s.id, s.code, s.location, s.sort_order sortOrder, s.status baseStatus,
-         st.id typeId, st.name typeName, st.category, st.width_m widthM, st.depth_m depthM,
-         st.price, st.tax_rate taxRate, st.includes,
+  SELECT s.id, s.code, s.state, s.location, s.sort_order sortOrder, s.floor_x floorX, s.floor_y floorY, s.status baseStatus,
+         st.id typeId, st.code typeCode, st.name typeName, st.category, st.width_m widthM, st.depth_m depthM,
+         COALESCE(statePricing.price, pricing.price) price, COALESCE(statePricing.tax_rate, pricing.tax_rate) taxRate, st.includes,
          b.id bookingId, b.status bookingStatus,
          h.expires_at holdExpiresAt
   FROM stalls s
   JOIN stall_types st ON st.id = s.stall_type_id
+  LEFT JOIN event_state_stall_pricing statePricing ON statePricing.event_id = s.event_id AND statePricing.state = s.state AND statePricing.stall_type_id = st.id
+  LEFT JOIN event_stall_pricing pricing ON pricing.event_id = s.event_id AND pricing.stall_type_id = st.id
+`
+const stallBookingsJoins = `
   LEFT JOIN stall_bookings b ON b.stall_id = s.id AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING')
   LEFT JOIN stall_holds h ON h.booking_id = b.id AND h.released_at IS NULL AND h.expires_at > NOW()`
 
@@ -50,11 +61,13 @@ function stallStatus(row: { baseStatus: string; bookingStatus: string | null }) 
   if (row.baseStatus === 'DISABLED') return 'DISABLED'
   if (row.bookingStatus === 'CONFIRMED') return 'BOOKED'
   if (row.bookingStatus) return 'HELD'
+  if (row.baseStatus === 'BOOKED') return 'BOOKED'
+  if (row.baseStatus === 'RESERVED') return 'RESERVED'
   return 'AVAILABLE'
 }
 
 const exhibitionSelect = `
-  SELECT e.id, e.title, e.city, e.venue, e.starts_at startsAt, e.ends_at endsAt,
+  SELECT e.id, e.title, e.city, e.state, e.venue, e.starts_at startsAt, e.ends_at endsAt,
          e.registration_deadline registrationDeadline,
          (SELECT COUNT(*) FROM stalls s
            WHERE s.event_id = e.id AND s.status = 'AVAILABLE'
@@ -62,7 +75,86 @@ const exhibitionSelect = `
                AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING'))) availableStalls,
          (SELECT COUNT(*) FROM stalls s WHERE s.event_id = e.id) totalStalls
   FROM events e
-  WHERE e.status IN ('PUBLISHED','APPROVED')`
+  WHERE e.status IN ('PUBLISHED','APPROVED') AND e.ends_at >= NOW()`
+
+const floorPlanExhibitions = [
+  {
+    title: 'The Haat of Art — Indore',
+    city: 'Indore',
+    venue: 'Abhay Prashal Sports Club, Indore, Madhya Pradesh',
+    state: 'Madhya Pradesh',
+    startsAt: '2026-10-30 10:00:00',
+    endsAt: '2026-11-01 20:00:00',
+  },
+  {
+    title: 'The Haat of Art — Mumbai Art Fair',
+    city: 'Mumbai',
+    venue: 'NESCO, Mumbai, Maharashtra',
+    state: 'Maharashtra',
+    startsAt: '2026-11-14 10:00:00',
+    endsAt: '2026-11-16 20:00:00',
+  },
+  {
+    title: 'The Haat of Art — Bengaluru Art Collective',
+    city: 'Bengaluru',
+    venue: 'Palace Grounds, Bengaluru, Karnataka',
+    state: 'Karnataka',
+    startsAt: '2026-12-05 10:00:00',
+    endsAt: '2026-12-07 20:00:00',
+  },
+  {
+    title: 'The Haat of Art — India Art Exhibition Tour 2027',
+    city: 'Pan India — Mumbai, Delhi, Bengaluru, Indore, Hyderabad, Pune, Jaipur and Ahmedabad',
+    venue: 'Multiple Exhibition Venues — India Tour',
+    state: 'Pan India',
+    startsAt: '2027-01-15 10:00:00',
+    endsAt: '2027-01-17 20:00:00',
+  },
+] as const
+
+const floorPlanStallTypes = [
+  { code: 'COMPACT', name: 'Compact Stall', category: 'INDIVIDUAL', widthM: 2, depthM: 2, price: 15000, includes: '2 spotlights, 1 table, 2 chairs, fascia name board', sortOrder: 1 },
+  { code: 'STANDARD', name: 'Standard Stall', category: 'INDIVIDUAL', widthM: 3, depthM: 3, price: 28000, includes: '4 spotlights, 2 display tables, 2 chairs, fascia name board', sortOrder: 2 },
+  { code: 'GROUP', name: 'Group Stall', category: 'GROUP', widthM: 6, depthM: 4, price: 55000, includes: '6 spotlights, 3 tables, 6 chairs, 3-wall display panel', sortOrder: 3 },
+  { code: 'GALLERY', name: 'Gallery Space', category: 'GALLERY', widthM: 10, depthM: 8, price: 120000, includes: '12 track lights, lounge seating, VIP wall branding, storage closet', sortOrder: 4 },
+] as const
+
+type SeedStallStatus = 'AVAILABLE' | 'BOOKED' | 'RESERVED'
+const floorPlanBooths = [
+  ...Array.from({ length: 8 }, (_, index) => ({
+    typeCode: 'COMPACT',
+    code: `A${index + 1}`,
+    status: (index === 0 ? 'BOOKED' : index === 6 ? 'RESERVED' : 'AVAILABLE') as SeedStallStatus,
+    sortOrder: index + 1,
+    floorX: (index % 4) + 1,
+    floorY: Math.floor(index / 4) + 1,
+  })),
+  ...Array.from({ length: 5 }, (_, index) => ({
+    typeCode: 'GROUP',
+    code: `B${index + 1}`,
+    status: (index === 0 ? 'BOOKED' : index === 3 ? 'RESERVED' : 'AVAILABLE') as SeedStallStatus,
+    sortOrder: index + 9,
+    floorX: (index % 4) + 1,
+    floorY: Math.floor(index / 4) + 1,
+  })),
+  ...Array.from({ length: 4 }, (_, index) => ({
+    typeCode: 'GALLERY',
+    code: `G${index + 1}`,
+    status: (index === 0 ? 'RESERVED' : index === 3 ? 'BOOKED' : 'AVAILABLE') as SeedStallStatus,
+    sortOrder: index + 14,
+    floorX: index + 1,
+    floorY: 1,
+  })),
+  ...Array.from({ length: 4 }, (_, index) => ({
+    typeCode: 'STANDARD',
+    code: `A${index + 9}`,
+    location: 'Hall A',
+    status: (index === 0 ? 'BOOKED' : index === 2 ? 'RESERVED' : 'AVAILABLE') as SeedStallStatus,
+    sortOrder: index + 18,
+    floorX: (index % 4) + 1,
+    floorY: 1,
+  })),
+]
 
 async function exhibitionsWithMedia() {
   const [events] = await pool.query<any[]>(`${exhibitionSelect} ORDER BY e.starts_at`)
@@ -86,6 +178,67 @@ async function exhibitionsWithMedia() {
     })),
   }))
 }
+
+const bookingProfileInput = z.object({
+  firstName: z.string().trim().min(2).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  phone: z.string().trim().regex(/^[0-9+()\s-]{6,30}$/),
+  address: z.string().trim().min(6).max(500),
+  websiteUrl: z.string().trim().max(512).default('').refine((value) => !value || /^https?:\/\/.+/i.test(value)),
+  instagramUrl: z.string().trim().max(512).default('').refine((value) => !value || /^https?:\/\/.+/i.test(value)),
+})
+
+async function loadBookingProfile(userId: string) {
+  const [users] = await pool.query<any[]>(`SELECT u.email, u.full_name fullName,
+      p.first_name firstName, p.last_name lastName, p.phone, p.address,
+      p.website_url websiteUrl, p.instagram_url instagramUrl
+    FROM users u LEFT JOIN artist_profiles p ON p.user_id=u.id WHERE u.id=?`, [userId])
+  const user = users[0]
+  if (!user) return null
+
+  const [applications] = await pool.query<any[]>(`SELECT first_name firstName, last_name lastName, phone, address,
+      website_url websiteUrl, instagram_url instagramUrl
+    FROM exhibition_applications WHERE user_id=? ORDER BY created_at DESC, id DESC LIMIT 1`, [userId])
+  const latest = applications[0] ?? {}
+  const accountName = String(user.fullName ?? '').trim().split(/\s+/).filter(Boolean)
+
+  return {
+    firstName: user.firstName || latest.firstName || accountName[0] || '',
+    lastName: user.lastName || latest.lastName || accountName.slice(1).join(' '),
+    phone: user.phone || latest.phone || '',
+    email: user.email,
+    address: user.address || latest.address || '',
+    websiteUrl: user.websiteUrl || latest.websiteUrl || '',
+    instagramUrl: user.instagramUrl || latest.instagramUrl || '',
+  }
+}
+
+// ---------- authenticated: exhibitor profile ----------
+bookingsRouter.get('/profile', ...artist, async (req: AuthRequest, res, next) => {
+  try {
+    const profile = await loadBookingProfile(req.user!.id)
+    if (!profile) return res.status(404).json({ error: 'Exhibitor profile not found' })
+    res.json(profile)
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.put('/profile', ...artist, async (req: AuthRequest, res, next) => {
+  try {
+    const parsed = bookingProfileInput.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid exhibitor profile' })
+    const profile = parsed.data
+    const displayName = `${profile.firstName} ${profile.lastName}`.trim()
+    await pool.query(`INSERT INTO artist_profiles
+        (user_id, display_name, first_name, last_name, phone, address, website_url, instagram_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE first_name=VALUES(first_name), last_name=VALUES(last_name),
+        phone=VALUES(phone), address=VALUES(address), website_url=VALUES(website_url),
+        instagram_url=VALUES(instagram_url)`,
+    [req.user!.id, displayName, profile.firstName, profile.lastName, profile.phone, profile.address, profile.websiteUrl, profile.instagramUrl])
+    const saved = await loadBookingProfile(req.user!.id)
+    res.json(saved)
+  } catch (error) { next(error) }
+})
 
 // ---------- public: catalogue ----------
 bookingsRouter.get('/exhibitions', async (_req, res, next) => {
@@ -115,15 +268,67 @@ bookingsRouter.get('/stall-types', async (_req, res, next) => {
   } catch (error) { next(error) }
 })
 
+bookingsRouter.get('/events/:eventId/stall-types', async (req, res, next) => {
+  try {
+    const [events] = await pool.query<any[]>("SELECT id, state FROM events WHERE id=? AND status IN ('PUBLISHED','APPROVED')", [req.params.eventId])
+    if (!events[0]) return res.status(404).json({ error: 'Exhibition not found' })
+    const parsedState = req.query.state === undefined ? null : z.string().trim().min(1).max(120).safeParse(req.query.state)
+    if (parsedState && !parsedState.success) return res.status(400).json({ error: 'Select a valid state' })
+    const state = parsedState?.success ? parsedState.data : ''
+    const [stateModeRows] = await pool.query<any[]>(
+      'SELECT state FROM event_state_stall_pricing WHERE event_id=? LIMIT 1',
+      [req.params.eventId])
+    if (stateModeRows.length) {
+      if (!state) return res.json([])
+      if (!splitStates(events[0].state).includes(state)) return res.status(400).json({ error: 'Select a state assigned to this exhibition' })
+      const [types] = await pool.query<any[]>(
+        `SELECT st.id, st.code, st.name, st.category, st.width_m widthM, st.depth_m depthM,
+                pricing.price, pricing.tax_rate taxRate, st.includes
+         FROM event_state_stall_pricing pricing
+         JOIN stall_types st ON st.id = pricing.stall_type_id
+         WHERE pricing.event_id=? AND pricing.state=? AND pricing.public_visible=1 AND st.active=1
+         ORDER BY st.sort_order, pricing.price`, [req.params.eventId, state])
+      return res.json(types)
+    }
+    const [types] = await pool.query<any[]>(
+        `SELECT st.id, st.code, st.name, st.category, st.width_m widthM, st.depth_m depthM,
+                pricing.price, pricing.tax_rate taxRate, st.includes
+         FROM event_stall_pricing pricing
+         JOIN stall_types st ON st.id = pricing.stall_type_id
+         WHERE pricing.event_id=? AND pricing.public_visible=1 AND st.active=1
+         ORDER BY st.sort_order, pricing.price`, [req.params.eventId])
+    res.json(types)
+  } catch (error) { next(error) }
+})
+
 bookingsRouter.get('/events/:eventId/stalls', async (req, res, next) => {
   try {
-    const [events] = await pool.query<any[]>("SELECT id FROM events WHERE id=? AND status IN ('PUBLISHED','APPROVED')", [req.params.eventId])
+    const [events] = await pool.query<any[]>("SELECT id, state FROM events WHERE id=? AND status IN ('PUBLISHED','APPROVED')", [req.params.eventId])
     if (!events[0]) return res.status(404).json({ error: 'Exhibition not found' })
-    const [stalls] = await pool.query<any[]>(`${stallSelect} WHERE s.event_id = ? ORDER BY s.sort_order, s.code`, [req.params.eventId])
+    const parsedState = req.query.state === undefined ? null : z.string().trim().min(1).max(120).safeParse(req.query.state)
+    if (parsedState && !parsedState.success) return res.status(400).json({ error: 'Select a valid state' })
+    const state = parsedState?.success ? parsedState.data : ''
+    const [stateModeRows] = await pool.query<any[]>(
+      'SELECT state FROM event_state_stall_pricing WHERE event_id=? LIMIT 1',
+      [req.params.eventId])
+    const stateSpecific = stateModeRows.length > 0
+    if (stateSpecific && !state) return res.json([])
+    if (stateSpecific && !splitStates(events[0].state).includes(state)) {
+      return res.status(400).json({ error: 'Select a state assigned to this exhibition' })
+    }
+    const stateFilter = stateSpecific ? ' AND s.state=?' : ''
+    const visibilityFilter = stateSpecific
+      ? ' AND statePricing.event_id IS NOT NULL AND statePricing.public_visible=1'
+      : ' AND pricing.public_visible=1'
+    const [stalls] = await pool.query<any[]>(
+      `${stallSelect}${stallBookingsJoins}
+       WHERE st.active = 1 AND s.event_id = ?${visibilityFilter}${stateFilter}
+       ORDER BY s.sort_order, s.code`,
+      stateSpecific ? [req.params.eventId, state] : [req.params.eventId])
     res.json(stalls.map((row) => ({
-      id: row.id, code: row.code, location: row.location, sortOrder: row.sortOrder,
+      id: row.id, code: row.code, state: row.state, location: row.location, sortOrder: row.sortOrder, floorX: row.floorX, floorY: row.floorY,
       status: stallStatus(row), holdExpiresAt: row.holdExpiresAt ?? null,
-      type: { id: row.typeId, name: row.typeName, category: row.category, widthM: row.widthM, depthM: row.depthM, price: row.price, taxRate: row.taxRate, includes: row.includes },
+      type: { id: row.typeId, code: row.typeCode, name: row.typeName, category: row.category, widthM: row.widthM, depthM: row.depthM, price: row.price, taxRate: row.taxRate, includes: row.includes },
     })))
   } catch (error) { next(error) }
 })
@@ -328,7 +533,17 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
       if (existing.length) return fail(409, 'A booking already exists for this application')
 
       const [stalls] = await db.query<any[]>(
-        `SELECT s.*, st.price, st.tax_rate FROM stalls s JOIN stall_types st ON st.id = s.stall_type_id WHERE s.id = ? FOR UPDATE`, [input.stallId])
+        `SELECT s.*, COALESCE(statePricing.price, pricing.price) price, COALESCE(statePricing.tax_rate, pricing.tax_rate) tax_rate FROM stalls s
+         JOIN stall_types st ON st.id = s.stall_type_id AND st.active = 1
+         LEFT JOIN event_state_stall_pricing statePricing ON statePricing.event_id = s.event_id AND statePricing.state = s.state AND statePricing.stall_type_id = st.id
+         LEFT JOIN event_stall_pricing pricing ON pricing.event_id = s.event_id AND pricing.stall_type_id = st.id
+         WHERE s.id = ? AND (
+           (EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+             AND statePricing.event_id IS NOT NULL AND statePricing.public_visible=1)
+           OR (NOT EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+             AND pricing.public_visible=1)
+         ) FOR UPDATE`,
+        [input.stallId])
       const stall = stalls[0]
       if (!stall) return fail(404, 'Stall not found')
       if (stall.event_id !== app.event_id) return fail(400, 'Stall does not belong to the selected exhibition')
@@ -372,6 +587,11 @@ bookingsRouter.post('/bookings/:id/pay', ...artist, async (req: AuthRequest, res
       method: z.enum(['ONLINE', 'UPI', 'BANK_TRANSFER']).default('ONLINE'),
       paymentProofAssetId: z.string().uuid().nullable().default(null),
     }).parse(req.body)
+    const paymentMode = paymentModeFor(input.method)
+    if (paymentMode === 'unavailable') {
+      return res.status(503).json({ error: 'Online and UPI payments are not configured in production. Choose bank transfer for manual verification.' })
+    }
+    const sandboxEnabled = paymentMode === 'sandbox'
 
     const [existing] = await pool.query<any[]>(
       'SELECT p.* FROM payments p JOIN stall_bookings b ON b.id = p.booking_id WHERE p.idempotency_key = ? AND b.id = ? AND b.user_id = ?',
@@ -379,9 +599,11 @@ bookingsRouter.post('/bookings/:id/pay', ...artist, async (req: AuthRequest, res
     if (existing[0]) {
       const payment = existing[0]
       return res.json({
-        provider: 'SANDBOX', paymentId: payment.id, idempotencyKey, transactionRef: payment.transaction_ref,
+        provider: payment.provider, paymentId: payment.id, idempotencyKey, transactionRef: payment.transaction_ref,
         amount: Number(payment.amount), status: payment.status, duplicate: true,
-        note: 'Sandbox adapter — idempotent retry returned the existing payment.',
+        note: payment.provider === 'SANDBOX'
+          ? 'Sandbox adapter — idempotent retry returned the existing payment.'
+          : 'Bank transfer is awaiting manual verification.',
       })
     }
 
@@ -402,23 +624,26 @@ bookingsRouter.post('/bookings/:id/pay', ...artist, async (req: AuthRequest, res
       }
 
       const paymentId = crypto.randomUUID()
-      const transactionRef = `SBX-${crypto.randomBytes(4).toString('hex').toUpperCase()}`
+      const provider = paymentMode === 'manual' ? 'MANUAL' : 'SANDBOX'
+      const transactionRef = `${sandboxEnabled ? 'SBX' : 'MAN'}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`
       await db.query(
         `INSERT INTO payments(id,booking_id,provider,method,amount,currency,status,transaction_ref,idempotency_key)
          VALUES (?,?,?,?,?,?, 'PENDING', ?, ?)`,
-        [paymentId, booking.id, 'SANDBOX', input.method, booking.total_amount, booking.currency, transactionRef, idempotencyKey])
+        [paymentId, booking.id, provider, input.method, booking.total_amount, booking.currency, transactionRef, idempotencyKey])
       await recordAudit(req.user!.id, 'payment.initiate', 'payment', paymentId, { bookingId: booking.id, method: input.method })
       return done({
-        provider: 'SANDBOX', paymentId, idempotencyKey, transactionRef, amount: Number(booking.total_amount), status: 'PENDING',
+        provider, paymentId, idempotencyKey, transactionRef, amount: Number(booking.total_amount), status: 'PENDING',
         holdExpiresAt: holds[0].expires_at,
-        note: 'Sandbox adapter — no real money moves. Success webhook signature is provided so the flow can be completed end-to-end.',
-        sandboxSuccessWebhook: input.method === 'BANK_TRANSFER' ? null : {
+        note: sandboxEnabled
+          ? 'Sandbox adapter — no real money moves. Success webhook signature is provided so the flow can be completed end-to-end.'
+          : 'Bank transfer submitted for manual verification. No payment is processed automatically.',
+        sandboxSuccessWebhook: sandboxEnabled && input.method !== 'BANK_TRANSFER' ? {
           url: '/api/bookings/payments/webhook',
           body: {
             idempotencyKey, transactionRef, amount: Number(booking.total_amount), status: 'SUCCESS',
             signature: signWebhook(idempotencyKey, transactionRef, Number(booking.total_amount), 'SUCCESS'),
           },
-        },
+        } : null,
       })
     })
     if (!result.ok) return res.status(result.status).json({ error: result.error })
@@ -427,10 +652,39 @@ bookingsRouter.post('/bookings/:id/pay', ...artist, async (req: AuthRequest, res
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_ENTRY') {
       const [retry] = await pool.query<any[]>('SELECT * FROM payments WHERE idempotency_key = ?', [idempotencyKey])
       const payment = retry[0]
-      if (payment) return res.json({ provider: 'SANDBOX', paymentId: payment.id, idempotencyKey, transactionRef: payment.transaction_ref, amount: Number(payment.amount), status: payment.status, duplicate: true })
+      if (payment) return res.json({ provider: payment.provider, paymentId: payment.id, idempotencyKey, transactionRef: payment.transaction_ref, amount: Number(payment.amount), status: payment.status, duplicate: true })
     }
     next(error)
   }
+})
+
+bookingsRouter.post('/bookings/:id/cancel', ...artist, async (req: AuthRequest, res, next) => {
+  try {
+    const bookingId = z.string().uuid().parse(req.params.id)
+    const input = z.object({
+      reason: z.string().trim().min(3).max(255).default('Withdrawn by the exhibitor before payment'),
+    }).parse(req.body)
+    const result = await withTransaction(async (db) => {
+      const [rows] = await db.query<any[]>('SELECT id, booking_ref bookingRef, user_id userId, status FROM stall_bookings WHERE id = ? FOR UPDATE', [bookingId])
+      const booking = rows[0]
+      if (!booking || booking.userId !== req.user!.id) return fail(404, 'Booking not found')
+      if (booking.status !== 'PAYMENT_PENDING') return fail(409, `Booking is ${booking.status.toLowerCase()} and cannot be released`)
+
+      await db.query('UPDATE payments SET status = ? WHERE booking_id = ? AND status = ?', ['FAILED', bookingId, 'PENDING'])
+      await db.query('UPDATE stall_bookings SET status = ?, cancellation_reason = ?, cancelled_at = NOW() WHERE id = ?', ['CANCELLED', input.reason, bookingId])
+      await db.query('UPDATE stall_holds SET released_at = NOW() WHERE booking_id = ? AND released_at IS NULL', [bookingId])
+      const [users] = await db.query<any[]>('SELECT email FROM users WHERE id = ?', [req.user!.id])
+      await notify(db, {
+        bookingId, email: users[0].email, type: 'booking_cancelled',
+        subject: `Booking ${booking.bookingRef} cancelled — The Haat of Art`,
+        text: `Your booking ${booking.bookingRef} was cancelled before payment.`,
+      })
+      await recordAudit(req.user!.id, 'booking.cancel', 'stall_booking', bookingId, { reason: input.reason, refund: false })
+      return done({ bookingId, status: 'CANCELLED' })
+    })
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
+    res.json(result)
+  } catch (error) { next(error) }
 })
 
 const webhookInput = z.object({
@@ -442,6 +696,7 @@ const webhookInput = z.object({
 })
 
 bookingsRouter.post('/payments/webhook', async (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return res.status(503).json({ error: 'Sandbox payment webhooks are disabled in production.' })
   try {
     const input = webhookInput.parse(req.body)
     const expected = signWebhook(input.idempotencyKey, input.transactionRef, input.amount, input.status)
@@ -750,20 +1005,250 @@ bookingsRouter.post('/admin/bookings/:id/refund-complete', ...manage, async (req
 })
 
 // ---------- admin: stalls & stall types ----------
+bookingsRouter.get('/admin/stall-types', ...manage, async (_req: AuthRequest, res, next) => {
+  try {
+    const [types] = await pool.query<any[]>(
+      'SELECT id, code, name, category, width_m widthM, depth_m depthM, price, tax_rate taxRate, includes, active FROM stall_types ORDER BY sort_order, price')
+    res.json(types)
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.get('/admin/events/:eventId/stalls', ...manage, async (req: AuthRequest, res, next) => {
+  try {
+    const [events] = await pool.query<any[]>('SELECT id FROM events WHERE id=?', [req.params.eventId])
+    if (!events[0]) return res.status(404).json({ error: 'Exhibition not found' })
+    const [rows] = await pool.query<any[]>(
+      `${stallSelect}${stallBookingsJoins}
+       WHERE s.event_id=?
+       ORDER BY s.state, s.sort_order, s.code`,
+      [req.params.eventId])
+    res.json(rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      state: row.state,
+      location: row.location,
+      sortOrder: row.sortOrder,
+      floorX: row.floorX,
+      floorY: row.floorY,
+      status: stallStatus(row),
+      holdExpiresAt: row.holdExpiresAt ?? null,
+      type: {
+        id: row.typeId,
+        code: row.typeCode,
+        name: row.typeName,
+        category: row.category,
+        widthM: row.widthM,
+        depthM: row.depthM,
+        price: row.price,
+        taxRate: row.taxRate,
+        includes: row.includes,
+      },
+    })))
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.get('/admin/events/:eventId/stall-pricing', ...manage, async (req: AuthRequest, res, next) => {
+  try {
+    const [events] = await pool.query<any[]>('SELECT id, state FROM events WHERE id=?', [req.params.eventId])
+    if (!events[0]) return res.status(404).json({ error: 'Exhibition not found' })
+    const [stateRows] = await pool.query<any[]>(
+      'SELECT state, stall_type_id stallTypeId, price, tax_rate taxRate, slot_count slotCount, public_visible publicVisible FROM event_state_stall_pricing WHERE event_id=?',
+      [req.params.eventId])
+    if (stateRows.length) {
+      const [types] = await pool.query<any[]>(
+        'SELECT id stallTypeId, code, name, category, width_m widthM, depth_m depthM, active FROM stall_types ORDER BY sort_order, price')
+      const [slotRows] = await pool.query<any[]>(
+        `SELECT state, stall_type_id stallTypeId, COUNT(*) slotCount FROM stalls WHERE event_id=? AND state<>'' GROUP BY state, stall_type_id`,
+        [req.params.eventId])
+      const states = [...new Set([...splitStates(events[0].state), ...stateRows.map((row) => String(row.state))])]
+      const statePricing = new Map(stateRows.map((row) => [`${row.state}:${row.stallTypeId}`, row]))
+      const stateSlots = new Map(slotRows.map((row) => [`${row.state}:${row.stallTypeId}`, Number(row.slotCount)]))
+      return res.json(states.flatMap((state) => types.map((type) => {
+        const key = `${state}:${type.stallTypeId}`
+        const pricing = statePricing.get(key)
+        return {
+          ...type,
+          state,
+          price: pricing?.price ?? null,
+          taxRate: pricing?.taxRate ?? null,
+          publicVisible: pricing?.publicVisible ?? false,
+          slotCount: stateSlots.get(key) ?? 0,
+        }
+      })))
+    }
+    const [rows] = await pool.query<any[]>(
+      `SELECT st.id stallTypeId, st.code, st.name, st.category, st.width_m widthM, st.depth_m depthM, st.active,
+              pricing.price, pricing.tax_rate taxRate, pricing.public_visible publicVisible, NULL state,
+              (SELECT COUNT(*) FROM stalls s WHERE s.event_id=? AND s.stall_type_id=st.id) slotCount
+       FROM stall_types st
+       LEFT JOIN event_stall_pricing pricing ON pricing.stall_type_id=st.id AND pricing.event_id=?
+       ORDER BY st.sort_order, st.price`, [req.params.eventId, req.params.eventId])
+    res.json(rows)
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.put('/admin/events/:eventId/state-stall-pricing/:state/:stallTypeId', ...manage, async (req: AuthRequest, res, next) => {
+  try {
+    const input = z.object({
+      price: z.coerce.number().min(0).max(10000000),
+      taxRate: z.coerce.number().min(0).max(100),
+      publicVisible: z.boolean(),
+    }).parse(req.body)
+    const state = z.string().trim().min(1).max(120).parse(req.params.state)
+    const [events] = await pool.query<any[]>('SELECT id, state FROM events WHERE id=?', [req.params.eventId])
+    const [types] = await pool.query<any[]>('SELECT id, active FROM stall_types WHERE id=?', [req.params.stallTypeId])
+    if (!events[0] || !types[0]) return res.status(404).json({ error: 'Exhibition or stall type not found' })
+    if (!splitStates(events[0].state).includes(state)) return res.status(400).json({ error: 'Select a state assigned to this exhibition' })
+    if (input.publicVisible && !types[0].active) return res.status(409).json({ error: 'Show the stall category before publishing its tariff' })
+    const [[slots]] = await pool.query<any[]>(
+      'SELECT COUNT(*) slotCount FROM stalls WHERE event_id=? AND state=? AND stall_type_id=?',
+      [req.params.eventId, state, req.params.stallTypeId])
+    await pool.query(
+      `INSERT INTO event_state_stall_pricing(event_id,state,stall_type_id,price,tax_rate,slot_count,public_visible)
+       VALUES (?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE price=VALUES(price), tax_rate=VALUES(tax_rate),
+         slot_count=VALUES(slot_count), public_visible=VALUES(public_visible)`,
+      [req.params.eventId, state, req.params.stallTypeId, input.price, input.taxRate, slots.slotCount, input.publicVisible ? 1 : 0])
+    await recordAudit(req.user!.id, 'event_state_stall_pricing.update', 'event_state_stall_pricing', `${req.params.eventId}:${state}:${req.params.stallTypeId}`, input)
+    res.json({ ok: true })
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.put('/admin/events/:eventId/stall-pricing/:stallTypeId', ...manage, async (req: AuthRequest, res, next) => {
+  try {
+    const input = z.object({
+      price: z.coerce.number().min(0).max(10000000),
+      taxRate: z.coerce.number().min(0).max(100),
+      publicVisible: z.boolean(),
+    }).parse(req.body)
+    const [events] = await pool.query<any[]>('SELECT id FROM events WHERE id=?', [req.params.eventId])
+    const [types] = await pool.query<any[]>('SELECT id, active FROM stall_types WHERE id=?', [req.params.stallTypeId])
+    if (!events[0] || !types[0]) return res.status(404).json({ error: 'Exhibition or stall type not found' })
+    if (input.publicVisible && !types[0].active) return res.status(409).json({ error: 'Show the stall category before publishing its tariff' })
+    await pool.query(
+      `INSERT INTO event_stall_pricing(event_id,stall_type_id,price,tax_rate,public_visible)
+       VALUES (?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE price=VALUES(price), tax_rate=VALUES(tax_rate), public_visible=VALUES(public_visible)`,
+      [req.params.eventId, req.params.stallTypeId, input.price, input.taxRate, input.publicVisible ? 1 : 0])
+    await recordAudit(req.user!.id, 'event_stall_pricing.update', 'event_stall_pricing', `${req.params.eventId}:${req.params.stallTypeId}`, input)
+    res.json({ ok: true })
+  } catch (error) { next(error) }
+})
+
 const stallInput = z.object({
   eventId: z.string().uuid(),
   stallTypeId: z.string().uuid(),
   code: z.string().trim().min(1).max(20),
+  state: z.string().trim().max(120).default(''),
   location: z.string().trim().max(120).default(''),
+})
+
+async function syncStateSlotCount(eventId: string, state: string, stallTypeId: string) {
+  if (!state) return
+  await pool.query(
+    `UPDATE event_state_stall_pricing
+     SET slot_count=(SELECT COUNT(*) FROM stalls WHERE event_id=? AND state=? AND stall_type_id=?)
+     WHERE event_id=? AND state=? AND stall_type_id=?`,
+    [eventId, state, stallTypeId, eventId, state, stallTypeId])
+}
+
+bookingsRouter.post('/admin/seed-floor-plans', ...manage, async (req: AuthRequest, res, next) => {
+  try {
+    let createdEvents = 0
+    const result = await withTransaction(async (db) => {
+      const eventIds: string[] = []
+      for (const exhibition of floorPlanExhibitions) {
+        const slug = exhibition.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        const [matches] = await db.query<any[]>('SELECT id, title FROM events WHERE title=? OR slug=? LIMIT 2 FOR UPDATE', [exhibition.title, slug])
+        const event = matches.find((entry) => entry.title === exhibition.title) ?? matches[0]
+        if (event) {
+          if (event.title !== exhibition.title) throw new Error(`The exhibition slug "${slug}" is already in use.`)
+          await db.query(`UPDATE events SET
+              city=IF(city='', ?, city), state=IF(state='', ?, state), venue=IF(venue='', ?, venue),
+              description=IF(description='', ?, description)
+            WHERE id=?`,
+          [exhibition.city, exhibition.state, exhibition.venue,
+            `Join artists and collectors at The Haat of Art in ${exhibition.city}.`, event.id])
+          eventIds.push(event.id)
+          continue
+        }
+
+        const eventId = crypto.randomUUID()
+        await db.query(`INSERT INTO events
+            (id, title, slug, description, starts_at, ends_at, venue, city, state, registration_deadline, status, created_by, approved_by, published_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'PUBLISHED', ?, ?, NOW())`,
+        [eventId, exhibition.title, slug, `Join artists and collectors at The Haat of Art in ${exhibition.city}.`,
+          exhibition.startsAt, exhibition.endsAt, exhibition.venue, exhibition.city, exhibition.state, req.user!.id, req.user!.id])
+        eventIds.push(eventId)
+        createdEvents += 1
+      }
+
+      const stallTypeIds = new Map<string, string>()
+      for (const type of floorPlanStallTypes) {
+        const proposedId = crypto.randomUUID()
+        await db.query(`INSERT INTO stall_types
+            (id, code, name, category, width_m, depth_m, price, tax_rate, includes, active, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 18, ?, 1, ?)
+          ON DUPLICATE KEY UPDATE name=VALUES(name), category=VALUES(category), width_m=VALUES(width_m),
+            depth_m=VALUES(depth_m), price=VALUES(price), tax_rate=VALUES(tax_rate),
+            includes=IF(VALUES(includes)='', includes, VALUES(includes)),
+            active=1, sort_order=VALUES(sort_order)`,
+        [proposedId, type.code, type.name, type.category, type.widthM, type.depthM, type.price, type.includes, type.sortOrder])
+        const [[stored]] = await db.query<any[]>('SELECT id FROM stall_types WHERE code=?', [type.code])
+        if (!stored) throw new Error(`Could not sync stall type ${type.code}.`)
+        stallTypeIds.set(type.code, stored.id)
+      }
+
+      for (const eventId of eventIds) {
+        for (const booth of floorPlanBooths) {
+          const stallTypeId = stallTypeIds.get(booth.typeCode)
+          if (!stallTypeId) throw new Error(`Missing seeded stall type ${booth.typeCode}.`)
+          const [existingRows] = await db.query<any[]>('SELECT id FROM stalls WHERE event_id=? AND code=? FOR UPDATE', [eventId, booth.code])
+          const existing = existingRows[0]
+          if (!existing) {
+            const location = 'location' in booth ? booth.location : 'Main Hall'
+            await db.query(`INSERT INTO stalls
+                (id, event_id, stall_type_id, code, location, status, sort_order, floor_x, floor_y)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [crypto.randomUUID(), eventId, stallTypeId, booth.code, location, booth.status, booth.sortOrder, booth.floorX, booth.floorY])
+            continue
+          }
+
+          const [[usage]] = await db.query<any[]>(`SELECT
+              EXISTS(SELECT 1 FROM stall_bookings WHERE stall_id=?) OR
+              EXISTS(SELECT 1 FROM stall_holds WHERE stall_id=? AND released_at IS NULL) inUse`,
+          [existing.id, existing.id])
+          if (Number(usage.inUse)) {
+            await db.query('UPDATE stalls SET location=?, sort_order=?, floor_x=?, floor_y=? WHERE id=?',
+              [location, booth.sortOrder, booth.floorX, booth.floorY, existing.id])
+          } else {
+            await db.query('UPDATE stalls SET stall_type_id=?, location=?, sort_order=?, floor_x=?, floor_y=? WHERE id=?',
+              [stallTypeId, location, booth.sortOrder, booth.floorX, booth.floorY, existing.id])
+          }
+        }
+      }
+
+      return { exhibitionsSynced: eventIds.length, stallTypesSynced: stallTypeIds.size, boothsSynced: eventIds.length * floorPlanBooths.length }
+    })
+    await recordAudit(req.user!.id, 'floorplan.seed_sync', 'exhibition_floor_plans', null, { ...result, createdEvents })
+    res.json({ ...result, createdEvents })
+  } catch (error) { next(error) }
 })
 
 bookingsRouter.post('/admin/stalls', ...manage, async (req: AuthRequest, res, next) => {
   try {
     const input = stallInput.parse(req.body)
+    const [events] = await pool.query<any[]>('SELECT id, state FROM events WHERE id=?', [input.eventId])
+    if (!events[0]) return res.status(404).json({ error: 'Exhibition not found' })
+    const [statePricing] = await pool.query<any[]>('SELECT state FROM event_state_stall_pricing WHERE event_id=? LIMIT 1', [input.eventId])
+    if (statePricing.length && !splitStates(events[0].state).includes(input.state)) {
+      return res.status(400).json({ error: 'Choose a state assigned to this exhibition' })
+    }
     const id = crypto.randomUUID()
     const [next] = await pool.query<any[]>('SELECT COALESCE(MAX(sort_order),0)+1 nextOrder FROM stalls WHERE event_id = ?', [input.eventId])
-    const [result] = await pool.query<any>('INSERT INTO stalls(id,event_id,stall_type_id,code,location,sort_order) VALUES (?,?,?,?,?,?)',
-      [id, input.eventId, input.stallTypeId, input.code, input.location, next[0].nextOrder])
+    const [result] = await pool.query<any>('INSERT INTO stalls(id,event_id,stall_type_id,code,state,location,sort_order) VALUES (?,?,?,?,?,?,?)',
+      [id, input.eventId, input.stallTypeId, input.code, input.state, input.location, next[0].nextOrder])
+    await syncStateSlotCount(input.eventId, input.state, input.stallTypeId)
     await recordAudit(req.user!.id, 'stall.create', 'stall', id, { code: input.code, eventId: input.eventId })
     res.status(201).json({ id, affected: result.affectedRows })
   } catch (error) {
@@ -774,16 +1259,39 @@ bookingsRouter.post('/admin/stalls', ...manage, async (req: AuthRequest, res, ne
 
 bookingsRouter.put('/admin/stalls/:id', ...manage, async (req: AuthRequest, res, next) => {
   try {
-    const input = z.object({ code: z.string().trim().min(1).max(20).optional(), location: z.string().trim().max(120).optional(), status: z.enum(['AVAILABLE', 'DISABLED']).optional(), stallTypeId: z.string().uuid().optional() }).parse(req.body)
+    const input = z.object({ code: z.string().trim().min(1).max(20).optional(), state: z.string().trim().max(120).optional(), location: z.string().trim().max(120).optional(), status: z.enum(['AVAILABLE', 'BOOKED', 'RESERVED', 'DISABLED']).optional(), stallTypeId: z.string().uuid().optional() }).parse(req.body)
+    const [existingRows] = await pool.query<any[]>('SELECT s.event_id eventId, s.state, s.status, s.stall_type_id stallTypeId, e.state eventStates FROM stalls s JOIN events e ON e.id=s.event_id WHERE s.id=?', [req.params.id])
+    const existing = existingRows[0]
+    if (!existing) return res.status(404).json({ error: 'Stall not found' })
+    if (input.state !== undefined && input.state && !splitStates(existing.eventStates).includes(input.state)) {
+      return res.status(400).json({ error: 'Choose a state assigned to this exhibition' })
+    }
+    if ((input.state !== undefined && input.state !== existing.state)
+      || (input.stallTypeId !== undefined && input.stallTypeId !== existing.stallTypeId)) {
+      const [[usage]] = await pool.query<any[]>(
+        `SELECT EXISTS(SELECT 1 FROM stall_bookings WHERE stall_id=?)
+           OR EXISTS(SELECT 1 FROM stall_holds WHERE stall_id=? AND released_at IS NULL AND expires_at>NOW()) inUse`,
+        [req.params.id, req.params.id])
+      if (Number(usage.inUse) || existing.status === 'BOOKED' || existing.status === 'RESERVED') {
+        return res.status(409).json({ error: 'A booked, reserved or held stall cannot be moved to another state or type' })
+      }
+    }
     const set: string[] = []
     const values: unknown[] = []
     if (input.code !== undefined) { set.push('code=?'); values.push(input.code) }
+    if (input.state !== undefined) { set.push('state=?'); values.push(input.state) }
     if (input.location !== undefined) { set.push('location=?'); values.push(input.location) }
     if (input.status !== undefined) { set.push('status=?'); values.push(input.status) }
     if (input.stallTypeId !== undefined) { set.push('stall_type_id=?'); values.push(input.stallTypeId) }
     if (!set.length) return res.status(400).json({ error: 'At least one field is required' })
     const [result] = await pool.query<any>(`UPDATE stalls SET ${set.join(',')} WHERE id=?`, [...values, req.params.id])
     if (!result.affectedRows) return res.status(404).json({ error: 'Stall not found' })
+    const nextState = input.state ?? existing.state
+    const nextTypeId = input.stallTypeId ?? existing.stallTypeId
+    await syncStateSlotCount(existing.eventId, existing.state, existing.stallTypeId)
+    if (nextState !== existing.state || nextTypeId !== existing.stallTypeId) {
+      await syncStateSlotCount(existing.eventId, nextState, nextTypeId)
+    }
     await recordAudit(req.user!.id, 'stall.update', 'stall', req.params.id, { fields: Object.keys(input) })
     res.json({ ok: true })
   } catch (error) { next(error) }
@@ -791,10 +1299,17 @@ bookingsRouter.put('/admin/stalls/:id', ...manage, async (req: AuthRequest, res,
 
 bookingsRouter.delete('/admin/stalls/:id', ...manage, async (req: AuthRequest, res, next) => {
   try {
+    const [stalls] = await pool.query<any[]>('SELECT event_id eventId, state, stall_type_id stallTypeId FROM stalls WHERE id=?', [req.params.id])
+    if (!stalls[0]) return res.status(404).json({ error: 'Stall not found' })
     const [used] = await pool.query<any[]>('SELECT id FROM stall_bookings WHERE stall_id = ? LIMIT 1', [req.params.id])
     if (used.length) return res.status(409).json({ error: 'Stall has bookings and cannot be deleted' })
+    const [held] = await pool.query<any[]>(
+      'SELECT id FROM stall_holds WHERE stall_id=? AND released_at IS NULL AND expires_at>NOW() LIMIT 1',
+      [req.params.id])
+    if (held.length) return res.status(409).json({ error: 'A selected or held stall cannot be deleted until its hold expires' })
     const [result] = await pool.query<any>('DELETE FROM stalls WHERE id = ?', [req.params.id])
     if (!result.affectedRows) return res.status(404).json({ error: 'Stall not found' })
+    await syncStateSlotCount(stalls[0].eventId, stalls[0].state, stalls[0].stallTypeId)
     await recordAudit(req.user!.id, 'stall.delete', 'stall', req.params.id)
     res.status(204).end()
   } catch (error) { next(error) }

@@ -2,14 +2,125 @@ import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
+import multer from 'multer'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
 import { referenceQrValue } from '../services/pass-token.js'
+import { hasValidMediaSignature } from '../services/media-validation.js'
+import { recordAudit } from '../services/audit.js'
+import { getHomepageHeroMedia } from '../services/homepage-hero-media.js'
+import { homepageHeroInput } from '../services/homepage-hero-validation.js'
 
 const adminWriteLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false })
-
+const homepageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 0 },
+})
+const homepageImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const homepageVideoTypes = new Set(['video/mp4', 'video/webm'])
 export const dashboardRouter = Router()
+
+function parseHomepageUpload(req: AuthRequest, res: import('express').Response, next: import('express').NextFunction) {
+  homepageUpload.single('file')(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400
+      return res.status(status).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Upload exceeds the 50 MB limit' : 'Invalid upload form' })
+    }
+    if (error) return next(error)
+    next()
+  })
+}
+
+dashboardRouter.get('/homepage', requireAuth, requirePermission('content:manage'), async (_req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store')
+    res.json(await getHomepageHeroMedia(true))
+  } catch (error) {
+    next(error)
+  }
+})
+
+dashboardRouter.post('/homepage/upload', requireAuth, requirePermission('content:manage'), adminWriteLimit, parseHomepageUpload, async (req: AuthRequest, res, next) => {
+  try {
+    const file = req.file
+    if (!file) return res.status(400).json({ error: 'Choose an image or video file to upload' })
+    const contentType = file.mimetype.toLowerCase()
+    if (!homepageImageTypes.has(contentType) && !homepageVideoTypes.has(contentType)) {
+      return res.status(415).json({ error: 'Upload a JPEG, PNG, WebP, MP4, or WebM file' })
+    }
+    if (homepageImageTypes.has(contentType) && file.size > 12 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Images must be 12 MB or smaller' })
+    }
+    if (!hasValidMediaSignature(contentType, file.buffer)) {
+      return res.status(415).json({ error: 'File content does not match its media type' })
+    }
+
+    const id = crypto.randomUUID()
+    await pool.query(
+      'INSERT INTO homepage_media_uploads(id,mime_type,data,byte_size,created_by) VALUES (?,?,?,?,?)',
+      [id, contentType, file.buffer, file.size, req.user!.id],
+    )
+    await recordAudit(req.user!.id, 'homepage.media.upload', 'homepage_media_upload', id, {
+      mimeType: contentType,
+      size: file.size,
+    })
+    res.status(201).json({ url: `/api/homepage/uploads/${id}`, mimeType: contentType, size: file.size })
+  } catch (error) {
+    next(error)
+  }
+})
+
+dashboardRouter.put('/homepage/media', requireAuth, requirePermission('content:manage'), adminWriteLimit, async (req: AuthRequest, res, next) => {
+  try {
+    const parsed = homepageHeroInput.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid homepage hero settings', details: parsed.error.issues })
+
+    const { slides, video } = parsed.data
+    await withTransaction(async (connection) => {
+      if (slides.length) {
+        await connection.query(
+          `DELETE FROM homepage_hero_slides WHERE id NOT IN (${slides.map(() => '?').join(',')})`,
+          slides.map((slide) => slide.id),
+        )
+      } else {
+        await connection.query('DELETE FROM homepage_hero_slides')
+      }
+
+      for (const [sortOrder, slide] of slides.entries()) {
+        await connection.query(`
+          INSERT INTO homepage_hero_slides(id,image_url,alt_text,caption,sort_order,is_active)
+          VALUES (?,?,?,?,?,?)
+          ON DUPLICATE KEY UPDATE image_url=VALUES(image_url), alt_text=VALUES(alt_text),
+            caption=VALUES(caption), sort_order=VALUES(sort_order), is_active=VALUES(is_active)
+        `, [slide.id, slide.imageUrl, slide.altText, slide.caption, sortOrder, slide.isActive])
+      }
+
+      await connection.query(`
+        INSERT INTO homepage_hero_video_settings(
+          id,hero_video_url,hero_video_poster_url,hero_video_enabled,hero_video_autoplay,hero_video_loop,
+          hero_slides_managed,updated_by
+        ) VALUES (1,?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE hero_video_url=VALUES(hero_video_url),
+          hero_video_poster_url=VALUES(hero_video_poster_url),
+          hero_video_enabled=VALUES(hero_video_enabled),
+          hero_video_autoplay=VALUES(hero_video_autoplay),
+          hero_video_loop=VALUES(hero_video_loop),
+          hero_slides_managed=hero_slides_managed OR VALUES(hero_slides_managed),
+          updated_by=VALUES(updated_by)
+      `, [video.url || null, video.posterUrl || null, video.enabled, video.autoplay, video.loop, slides.length > 0, req.user!.id])
+    })
+
+    await recordAudit(req.user!.id, 'homepage.media.update', 'homepage_hero', null, {
+      slideCount: slides.length,
+      videoEnabled: video.enabled,
+    })
+    res.set('Cache-Control', 'no-store')
+    res.json(await getHomepageHeroMedia(true))
+  } catch (error) {
+    next(error)
+  }
+})
 
 const dashboardRoles = new Set([
   'SUPER_ADMIN', 'ADMIN', 'CONTENT_MANAGER', 'REGISTRATION_MANAGER', 'ARTIST_EXHIBITOR', 'VISITOR',

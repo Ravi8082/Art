@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS homepage_exhibition_announcements (
+  id CHAR(36) PRIMARY KEY,
+  title VARCHAR(180) NOT NULL,
+  description TEXT NOT NULL,
+  state VARCHAR(80) NOT NULL,
+  city VARCHAR(120) NOT NULL,
+  venue VARCHAR(180) NOT NULL DEFAULT '',
+  starts_at DATETIME NULL,
+  ends_at DATETIME NULL,
+  is_first_in_state BOOLEAN NOT NULL DEFAULT FALSE,
+  image_key ENUM('exhibition1','exhibition2','exhibition3') NULL,
+  status ENUM('DRAFT','PUBLISHED') NOT NULL DEFAULT 'DRAFT',
+  sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  created_by CHAR(36) NULL,
+  updated_by CHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_homepage_exhibition_status_order(status, sort_order, created_at)
+);

@@ -13,7 +13,6 @@ export const contentRouter = Router()
 
 const textKeys = [
   'heroKicker', 'heroLine1', 'heroAccent', 'heroIntro',
-  'featuredKicker', 'featuredLine1', 'featuredAccent',
   'statementLine1', 'statementAccent', 'statementText',
   'footerLocations',
   'contactHeroTitle', 'contactHeroAccent', 'contactHeroIntro',

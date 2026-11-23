@@ -1,0 +1,4624 @@
+{
+  "phase": "after",
+  "baseUrl": "http://localhost:3000",
+  "createdAt": "2026-11-17T12:35:52.965Z",
+  "routeCount": 14,
+  "viewportCount": 2,
+  "screenshotCount": 28,
+  "routes": [
+    "/",
+    "/admin-demo/artworks",
+    "/admin-demo/artworks/review",
+    "/artist/bookings",
+    "/artist/plans",
+    "/artist/register",
+    "/blog",
+    "/contact",
+    "/exhibitions/events",
+    "/gallery",
+    "/newsletter/unsubscribe",
+    "/visitor/pass/capture-invalid-token",
+    "/visitor/register",
+    "/__capture_404__"
+  ],
+  "results": [
+    {
+      "route": "/",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "https://thehaatofart.com",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [
+        {
+          "label": "Explore Exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 127,
+          "height": 36
+        },
+        {
+          "label": "Meet the Artists",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 127,
+          "height": 36
+        },
+        {
+          "label": "Book Stall",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 127,
+          "height": 36
+        },
+        {
+          "label": "Visitor Pass",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 127,
+          "height": 36
+        },
+        {
+          "label": "Book Stall",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 127,
+          "height": 36
+        },
+        {
+          "label": "Visitor Pass",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 127,
+          "height": 36
+        }
+      ],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of ArtArt · Culture · Creativity"
+        },
+        {
+          "href": "/login",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Register / Login"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore Exhibitions"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibit With Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Meet the Artists"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Book Stall"
+        },
+        {
+          "href": "/indore",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Book Stall"
+        },
+        {
+          "href": "/indore",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/gallery",
+          "text": "Art Design"
+        },
+        {
+          "href": "/gallery",
+          "text": "Art Gallery"
+        },
+        {
+          "href": "/about",
+          "text": "Art Institutes"
+        },
+        {
+          "href": "/artists",
+          "text": "Art Studio"
+        },
+        {
+          "href": "/gallery",
+          "text": "Artifacts"
+        },
+        {
+          "href": "/artists",
+          "text": "Art For All"
+        },
+        {
+          "href": "/about",
+          "text": "Know More About Us"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": "View FullGallery"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/admin-demo/artworks",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Artwork Submissions · Admin Demo",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Dashboard"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "User Management"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artists"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artworks"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Blogs"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Subscriptions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Payments"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Notifications"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Settings"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "Review"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "View"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "Review"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "View"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/admin-demo/artworks/review",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Artwork Review · Admin Demo",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Dashboard"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "User Management"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artists"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artworks"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Blogs"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Subscriptions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Payments"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Notifications"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Settings"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "← Back to Submissions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Approve & Publish"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Request Changes"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Reject"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Submit Review"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/artist/bookings",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "My Applications & Bookings · The Haat of Art",
+      "lang": "en",
+      "description": "Track your stall applications, approvals, payments and receipts for The Haat of Art exhibitions.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Start a stall application"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/artist/plans",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Artist Plans · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "Subscribe Now"
+        },
+        {
+          "href": "/contact",
+          "text": "Subscribe Now"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/artist/register",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Artist Registration · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/login",
+          "text": "Sign in"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/blog",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Art Blog – Stories, Tips & Art Fest News | The Haat of Art",
+      "lang": "en",
+      "description": "Stories, insights and tips for artists and art lovers, plus news from The Haat of Art art fests and exhibitions.",
+      "canonical": "https://thehaatofart.com/blog",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [
+        {
+          "label": "",
+          "tag": "input",
+          "type": "file",
+          "className": "",
+          "width": 188,
+          "height": 40
+        }
+      ],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "xyz"
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "How Art Connects People, Cultures and Communities"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "How Art Connects People, Cultures and Communities"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "The Role of Art in Modern Society"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "How to Start Your Art Collection"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Art Techniques for Beginners"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Artist Stories"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Step Into a World of Fine Artwork at The Haat of Art, Mumbai"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Art Techniques"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Brushstrokes of Bhakti | Krishna Painting At The Haat of Art"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Exhibition Highlights"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Mumbai Art Exhibition 2025 | A Celebration of Creativity"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog#submit",
+          "text": "Submit Blog →"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/contact",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Contact The Haat of Art – Stalls, Collaborations & Enquiries",
+      "lang": "en",
+      "description": "Contact The Haat of Art for stall bookings, artist collaborations, sponsorship and partnership enquiries.",
+      "canonical": "https://thehaatofart.com/contact",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "#enquiry-form",
+          "text": "Send an enquiry ↓"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Book a stall"
+        },
+        {
+          "href": "/artists",
+          "text": "Artist collaborations"
+        },
+        {
+          "href": "#enquiry-form",
+          "text": "Partnerships"
+        },
+        {
+          "href": "tel:+919000000000",
+          "text": "+91 90000 00000"
+        },
+        {
+          "href": "mailto:hello@thehaatofart.com",
+          "text": "hello@thehaatofart.com"
+        },
+        {
+          "href": "https://www.google.com/maps/search/?api=1&query=Indore+Madhya+Pradesh",
+          "text": "Get directions"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/exhibitions/events",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Exhibitions & Events · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "https://thehaatofart.com/exhibitions/events",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "#event-calendar",
+          "text": "Explore the calendar"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Get a free entry pass"
+        },
+        {
+          "href": "/visitor/register",
+          "text": "Create visitor account"
+        },
+        {
+          "href": "/visitor/register",
+          "text": "Create visitor account"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Get a free entry pass"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/gallery",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Art Gallery – Paintings by Indian Artists | The Haat of Art",
+      "lang": "en",
+      "description": "Browse paintings and artworks by Indian artists featured at The Haat of Art art fests and exhibitions.",
+      "canonical": "https://thehaatofart.com/gallery",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/artists/u/b81a7b38-13ae-4452-8405-4d2eaa3259f4",
+          "text": "View Artist"
+        },
+        {
+          "href": "/contact",
+          "text": "Inquire About Artwork →"
+        },
+        {
+          "href": "/artists",
+          "text": "View All Artists →"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Priya SharmaMumbai"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Rohan MehtaPune"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Neha KapoorDelhi"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Amit VermaIndore"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Sneha JainJaipur"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Karan DesaiBengaluru"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/newsletter/unsubscribe",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Newsletter preferences · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/visitor/pass/capture-invalid-token",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Visitor Pass · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Visit The Haat of Art"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/visitor/register",
+      "device": "mobile",
+      "responseStatus": 200,
+      "title": "Visitor Registration · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/login",
+          "text": "Sign in"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/__capture_404__",
+      "device": "mobile",
+      "responseStatus": 404,
+      "title": "Page not found · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [
+        {
+          "label": "The Haat of Art home",
+          "tag": "a",
+          "type": "",
+          "className": "public-logo",
+          "width": 78,
+          "height": 38
+        },
+        {
+          "label": "Open navigation",
+          "tag": "button",
+          "type": "",
+          "className": "public-menu",
+          "width": 28,
+          "height": 28
+        },
+        {
+          "label": "Back home",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline",
+          "width": 375,
+          "height": 39
+        },
+        {
+          "label": "Explore exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "underlined-link",
+          "width": 124,
+          "height": 23
+        },
+        {
+          "label": "Email address",
+          "tag": "input",
+          "type": "email",
+          "className": "",
+          "width": 375,
+          "height": 41
+        },
+        {
+          "label": "Subscribe",
+          "tag": "button",
+          "type": "submit",
+          "className": "",
+          "width": 79,
+          "height": 24
+        },
+        {
+          "label": "The Haat of Art home",
+          "tag": "a",
+          "type": "",
+          "className": "public-logo",
+          "width": 375,
+          "height": 38
+        },
+        {
+          "label": "Facebook",
+          "tag": "a",
+          "type": "",
+          "className": "fb",
+          "width": 6,
+          "height": 23
+        },
+        {
+          "label": "Instagram",
+          "tag": "a",
+          "type": "",
+          "className": "ig",
+          "width": 375,
+          "height": 17
+        },
+        {
+          "label": "YouTube",
+          "tag": "a",
+          "type": "",
+          "className": "yt",
+          "width": 375,
+          "height": 16
+        },
+        {
+          "label": "LinkedIn",
+          "tag": "a",
+          "type": "",
+          "className": "in",
+          "width": 16,
+          "height": 23
+        },
+        {
+          "label": "X",
+          "tag": "a",
+          "type": "",
+          "className": "xx",
+          "width": 375,
+          "height": 15
+        },
+        {
+          "label": "Home",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 48,
+          "height": 23
+        },
+        {
+          "label": "Exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 83,
+          "height": 23
+        },
+        {
+          "label": "Artists",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 49,
+          "height": 23
+        },
+        {
+          "label": "Gallery",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 56,
+          "height": 23
+        },
+        {
+          "label": "Blogs",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 43,
+          "height": 23
+        },
+        {
+          "label": "Contact Us",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 88,
+          "height": 23
+        },
+        {
+          "label": "Artist Registration",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 141,
+          "height": 23
+        },
+        {
+          "label": "Exhibition Opportunities",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 188,
+          "height": 23
+        },
+        {
+          "label": "Guidelines",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 84,
+          "height": 23
+        },
+        {
+          "label": "Resources",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 82,
+          "height": 23
+        },
+        {
+          "label": "Artist Login",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 87,
+          "height": 23
+        },
+        {
+          "label": "Visitor Registration",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 149,
+          "height": 23
+        },
+        {
+          "label": "Upcoming Exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 171,
+          "height": 23
+        },
+        {
+          "label": "Past Exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 122,
+          "height": 23
+        },
+        {
+          "label": "FAQ",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 31,
+          "height": 23
+        },
+        {
+          "label": "Visitor Login",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 96,
+          "height": 23
+        },
+        {
+          "label": "Privacy Policy",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 108,
+          "height": 23
+        },
+        {
+          "label": "Terms & Conditions",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 156,
+          "height": 23
+        },
+        {
+          "label": "Artist Agreement",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 135,
+          "height": 23
+        },
+        {
+          "label": "Accessibility",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 98,
+          "height": 23
+        },
+        {
+          "label": "Sitemap",
+          "tag": "a",
+          "type": "",
+          "className": "",
+          "width": 67,
+          "height": 23
+        },
+        {
+          "label": "Back to top",
+          "tag": "button",
+          "type": "button",
+          "className": "thf-top",
+          "width": 20,
+          "height": 20
+        },
+        {
+          "label": "Chat with us on WhatsApp",
+          "tag": "a",
+          "type": "",
+          "className": "wa-btn",
+          "width": 375,
+          "height": 30
+        }
+      ],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Back home"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore exhibitions"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 375,
+      "viewportWidth": 375
+    },
+    {
+      "route": "/",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "https://thehaatofart.com",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [
+        {
+          "label": "Explore Exhibitions",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 122,
+          "height": 36
+        },
+        {
+          "label": "Meet the Artists",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 122,
+          "height": 36
+        },
+        {
+          "label": "Book Stall",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 112,
+          "height": 36
+        },
+        {
+          "label": "Visitor Pass",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 112,
+          "height": 36
+        },
+        {
+          "label": "Book Stall",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn th-btn-sm",
+          "width": 236,
+          "height": 36
+        },
+        {
+          "label": "Visitor Pass",
+          "tag": "a",
+          "type": "",
+          "className": "th-btn-outline th-btn-sm",
+          "width": 236,
+          "height": 36
+        }
+      ],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of ArtArt · Culture · Creativity"
+        },
+        {
+          "href": "/login",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Register / Login"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore Exhibitions"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibit With Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Meet the Artists"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Book Stall"
+        },
+        {
+          "href": "/indore",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Book Stall"
+        },
+        {
+          "href": "/indore",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/gallery",
+          "text": "Art Design"
+        },
+        {
+          "href": "/gallery",
+          "text": "Art Gallery"
+        },
+        {
+          "href": "/about",
+          "text": "Art Institutes"
+        },
+        {
+          "href": "/artists",
+          "text": "Art Studio"
+        },
+        {
+          "href": "/gallery",
+          "text": "Artifacts"
+        },
+        {
+          "href": "/artists",
+          "text": "Art For All"
+        },
+        {
+          "href": "/about",
+          "text": "Know More About Us"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/gallery",
+          "text": "View FullGallery"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/admin-demo/artworks",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Artwork Submissions · Admin Demo",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Dashboard"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "User Management"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artists"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artworks"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Blogs"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Subscriptions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Payments"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Notifications"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Settings"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "Review"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "View"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "Review"
+        },
+        {
+          "href": "/admin-demo/artworks/review",
+          "text": "View"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/admin-demo/artworks/review",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Artwork Review · Admin Demo",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Dashboard"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "User Management"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artists"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Artworks"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Blogs"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Subscriptions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Payments"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Notifications"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Settings"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "← Back to Submissions"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Approve & Publish"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Request Changes"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Reject"
+        },
+        {
+          "href": "/admin-demo/artworks",
+          "text": "Submit Review"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/artist/bookings",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "My Applications & Bookings · The Haat of Art",
+      "lang": "en",
+      "description": "Track your stall applications, approvals, payments and receipts for The Haat of Art exhibitions.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Start a stall application"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/artist/plans",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Artist Plans · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "Subscribe Now"
+        },
+        {
+          "href": "/contact",
+          "text": "Subscribe Now"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/artist/register",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Artist Registration · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/login",
+          "text": "Sign in"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/blog",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Art Blog – Stories, Tips & Art Fest News | The Haat of Art",
+      "lang": "en",
+      "description": "Stories, insights and tips for artists and art lovers, plus news from The Haat of Art art fests and exhibitions.",
+      "canonical": "https://thehaatofart.com/blog",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [
+        {
+          "label": "",
+          "tag": "input",
+          "type": "file",
+          "className": "",
+          "width": 188,
+          "height": 40
+        }
+      ],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "xyz"
+        },
+        {
+          "href": "/blog/80369c8d-2a4b-4736-88a5-7c4248c7cc84",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "How Art Connects People, Cultures and Communities"
+        },
+        {
+          "href": "/blog/d58176e4-64f8-4a70-a67c-b364c8c8b6f9",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "How Art Connects People, Cultures and Communities"
+        },
+        {
+          "href": "/blog/458b15fc-1595-49fd-abcc-222eec1c6832",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "The Role of Art in Modern Society"
+        },
+        {
+          "href": "/blog/6ff72765-590a-4408-b18f-486acaed03ec",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "How to Start Your Art Collection"
+        },
+        {
+          "href": "/blog/9dff8cae-1ea8-4949-a420-28a7d696eb9f",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Community Stories"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Art Techniques for Beginners"
+        },
+        {
+          "href": "/blog/c48f01b2-b81b-47ee-8c4c-37fe0b04b50a",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Artist Stories"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Step Into a World of Fine Artwork at The Haat of Art, Mumbai"
+        },
+        {
+          "href": "/blog/step-into-a-world-of-fine-artwork",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Art Techniques"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Brushstrokes of Bhakti | Krishna Painting At The Haat of Art"
+        },
+        {
+          "href": "/blog/brushstrokes-of-bhakti",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Exhibition Highlights"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Mumbai Art Exhibition 2025 | A Celebration of Creativity"
+        },
+        {
+          "href": "/blog/mumbai-art-exhibition-2025",
+          "text": "Read More →"
+        },
+        {
+          "href": "/blog#submit",
+          "text": "Submit Blog →"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/contact",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Contact The Haat of Art – Stalls, Collaborations & Enquiries",
+      "lang": "en",
+      "description": "Contact The Haat of Art for stall bookings, artist collaborations, sponsorship and partnership enquiries.",
+      "canonical": "https://thehaatofart.com/contact",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "#enquiry-form",
+          "text": "Send an enquiry ↓"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Book a stall"
+        },
+        {
+          "href": "/artists",
+          "text": "Artist collaborations"
+        },
+        {
+          "href": "#enquiry-form",
+          "text": "Partnerships"
+        },
+        {
+          "href": "tel:+919000000000",
+          "text": "+91 90000 00000"
+        },
+        {
+          "href": "mailto:hello@thehaatofart.com",
+          "text": "hello@thehaatofart.com"
+        },
+        {
+          "href": "https://www.google.com/maps/search/?api=1&query=Indore+Madhya+Pradesh",
+          "text": "Get directions"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/exhibitions/events",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Exhibitions & Events · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "https://thehaatofart.com/exhibitions/events",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "#event-calendar",
+          "text": "Explore the calendar"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Get a free entry pass"
+        },
+        {
+          "href": "/visitor/register",
+          "text": "Create visitor account"
+        },
+        {
+          "href": "/visitor/register",
+          "text": "Create visitor account"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Get a free entry pass"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/gallery",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Art Gallery – Paintings by Indian Artists | The Haat of Art",
+      "lang": "en",
+      "description": "Browse paintings and artworks by Indian artists featured at The Haat of Art art fests and exhibitions.",
+      "canonical": "https://thehaatofart.com/gallery",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/artists/u/b81a7b38-13ae-4452-8405-4d2eaa3259f4",
+          "text": "View Artist"
+        },
+        {
+          "href": "/contact",
+          "text": "Inquire About Artwork →"
+        },
+        {
+          "href": "/artists",
+          "text": "View All Artists →"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Priya SharmaMumbai"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Rohan MehtaPune"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Neha KapoorDelhi"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Amit VermaIndore"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Sneha JainJaipur"
+        },
+        {
+          "href": "/artist/profile",
+          "text": "Karan DesaiBengaluru"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/newsletter/unsubscribe",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Newsletter preferences · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/visitor/pass/capture-invalid-token",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Visitor Pass · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Visit The Haat of Art"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/visitor/register",
+      "device": "tablet",
+      "responseStatus": 200,
+      "title": "Visitor Registration · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/login",
+          "text": "Sign in"
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    },
+    {
+      "route": "/__capture_404__",
+      "device": "tablet",
+      "responseStatus": 404,
+      "title": "Page not found · The Haat of Art",
+      "lang": "en",
+      "description": "The Haat of Art is an Indian art fest and exhibition platform. Book artist stalls, get free visitor passes, meet artists and discover paintings, crafts and live art at art festivals in Indore, Mumbai and more.",
+      "canonical": "",
+      "openGraphTitle": "The Haat of Art | Art Fest, Art Exhibition & Artist Stalls in India",
+      "openGraphImage": "https://thehaatofart.com/media/logo.png",
+      "h1Count": 1,
+      "mainCount": 1,
+      "missingAlt": [],
+      "brokenImages": [],
+      "smallTargets": [],
+      "missingFragments": [],
+      "anchors": [
+        {
+          "href": "/",
+          "text": "The Haat of Art"
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Pass"
+        },
+        {
+          "href": "/highlights",
+          "text": "Highlights"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Registration"
+        },
+        {
+          "href": "/gallery",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Back home"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Explore exhibitions"
+        },
+        {
+          "href": "/",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "f"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/contact",
+          "text": "in"
+        },
+        {
+          "href": "/contact",
+          "text": ""
+        },
+        {
+          "href": "/",
+          "text": "Home"
+        },
+        {
+          "href": "/about",
+          "text": "About Us"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Exhibitions"
+        },
+        {
+          "href": "/artists",
+          "text": "Artists"
+        },
+        {
+          "href": "/gallery",
+          "text": "Gallery"
+        },
+        {
+          "href": "/blog",
+          "text": "Blogs"
+        },
+        {
+          "href": "/blog",
+          "text": "Media Coverage"
+        },
+        {
+          "href": "/contact",
+          "text": "Contact Us"
+        },
+        {
+          "href": "/artist/register",
+          "text": "Artist Registration"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Exhibition Opportunities"
+        },
+        {
+          "href": "/book-your-stall",
+          "text": "Stall Booking"
+        },
+        {
+          "href": "/exhibit-with-us",
+          "text": "Guidelines"
+        },
+        {
+          "href": "/blog",
+          "text": "Resources"
+        },
+        {
+          "href": "/highlights",
+          "text": "Success Stories"
+        },
+        {
+          "href": "/login",
+          "text": "Artist Login"
+        },
+        {
+          "href": "/indore#register",
+          "text": "Visitor Registration"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Upcoming Exhibitions"
+        },
+        {
+          "href": "/exhibitions",
+          "text": "Event Calendar"
+        },
+        {
+          "href": "/highlights",
+          "text": "Past Exhibitions"
+        },
+        {
+          "href": "/indore",
+          "text": "Plan Your Visit"
+        },
+        {
+          "href": "/contact",
+          "text": "FAQ"
+        },
+        {
+          "href": "/login",
+          "text": "Visitor Login"
+        },
+        {
+          "href": "/contact",
+          "text": "Privacy Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Terms & Conditions"
+        },
+        {
+          "href": "/contact",
+          "text": "Cancellation & Refund"
+        },
+        {
+          "href": "/contact",
+          "text": "Artist Agreement"
+        },
+        {
+          "href": "/contact",
+          "text": "Cookie Policy"
+        },
+        {
+          "href": "/contact",
+          "text": "Accessibility"
+        },
+        {
+          "href": "/",
+          "text": "Sitemap"
+        },
+        {
+          "href": "https://wa.me/918052696360?text=Hello%20The%20Haat%20of%20Art%20team!%20I%20would%20like%20to%20know%20more%20about%20your%20exhibitions%2C%20stall%20booking%20and%20visitor%20passes.%20Please%20share%20the%20details.%20Thank%20you!",
+          "text": ""
+        }
+      ],
+      "horizontalOverflow": false,
+      "documentWidth": 768,
+      "viewportWidth": 768
+    }
+  ],
+  "consoleAndNetworkErrors": [
+    {
+      "type": "http",
+      "route": "/artist/bookings",
+      "url": "http://localhost:3000/api/auth/me",
+      "status": 401
+    },
+    {
+      "type": "console",
+      "route": "/artist/bookings",
+      "message": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "type": "http",
+      "route": "/visitor/pass/capture-invalid-token",
+      "url": "http://localhost:3000/api/passes/public/capture-invalid-token",
+      "status": 404
+    },
+    {
+      "type": "console",
+      "route": "/visitor/pass/capture-invalid-token",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "http",
+      "route": "/__capture_404__",
+      "url": "http://localhost:3000/__capture_404__",
+      "status": 404
+    },
+    {
+      "type": "console",
+      "route": "/__capture_404__",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "console",
+      "route": "/__capture_404__",
+      "message": "Refused to apply style from 'http://localhost:3000/_next/static/chunks/20t-4ziqhhab7.css' because its MIME type ('text/plain') is not a supported stylesheet MIME type, and strict MIME checking is enabled."
+    },
+    {
+      "type": "requestfailed",
+      "route": "/__capture_404__",
+      "url": "http://localhost:3000/_next/static/chunks/20t-4ziqhhab7.css",
+      "message": "net::ERR_ABORTED"
+    },
+    {
+      "type": "console",
+      "route": "/__capture_404__",
+      "message": "Refused to apply style from 'http://localhost:3000/_next/static/chunks/12eyxccvzbkcd.css' because its MIME type ('text/plain') is not a supported stylesheet MIME type, and strict MIME checking is enabled."
+    },
+    {
+      "type": "requestfailed",
+      "route": "/__capture_404__",
+      "url": "http://localhost:3000/_next/static/chunks/12eyxccvzbkcd.css",
+      "message": "net::ERR_ABORTED"
+    },
+    {
+      "type": "http",
+      "route": "/artist/bookings",
+      "url": "http://localhost:3000/api/auth/me",
+      "status": 401
+    },
+    {
+      "type": "console",
+      "route": "/artist/bookings",
+      "message": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "type": "http",
+      "route": "/visitor/pass/capture-invalid-token",
+      "url": "http://localhost:3000/api/passes/public/capture-invalid-token",
+      "status": 404
+    },
+    {
+      "type": "console",
+      "route": "/visitor/pass/capture-invalid-token",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "http",
+      "route": "/__capture_404__",
+      "url": "http://localhost:3000/__capture_404__",
+      "status": 404
+    },
+    {
+      "type": "console",
+      "route": "/__capture_404__",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "brokenInternalLinks": []
+}

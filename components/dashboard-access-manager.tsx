@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, LockKeyhole, RefreshCw, Save, Search, ShieldCheck, Users, X } from 'lucide-react'
+import { indianStates, indianUnionTerritories } from '@/lib/indian-states'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const roleLabels: Record<string, string> = {
@@ -27,7 +28,7 @@ type Account = {
   eventIds: string[]
 }
 
-type StaffEvent = { id: string; title: string; city: string; state: string }
+type StaffEvent = { id: string; title: string; city: string; state: string; startsAt?: string }
 
 export function DashboardAccessManager() {
   const [users, setUsers] = useState<Account[]>([])
@@ -39,15 +40,26 @@ export function DashboardAccessManager() {
   const [editStates, setEditStates] = useState('')
   const [editEventIds, setEditEventIds] = useState<string[]>([])
   const [staffEvents, setStaffEvents] = useState<StaffEvent[]>([])
+  const [staffEventsLoading, setStaffEventsLoading] = useState(true)
+  const [staffEventsError, setStaffEventsError] = useState('')
   const [addingStaff, setAddingStaff] = useState(false)
-  const [newStaff, setNewStaff] = useState({ fullName: '', email: '', password: '', states: '' })
+  const [newStaff, setNewStaff] = useState({ fullName: '', email: '', password: '' })
+  const [newStaffStates, setNewStaffStates] = useState<string[]>([])
   const [newStaffEvents, setNewStaffEvents] = useState<string[]>([])
 
   useEffect(() => {
-    void fetch(`${apiBase}/api/dashboard/staff-events`, { credentials: 'include', headers: { accept: 'application/json' } })
-      .then((response) => response.ok ? response.json() as Promise<{ events?: StaffEvent[] }> : { events: [] })
-      .then((data) => setStaffEvents(data.events ?? []))
-      .catch(() => setStaffEvents([]))
+    void (async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/dashboard/staff-events`, { credentials: 'include', headers: { accept: 'application/json' } })
+        const data = await response.json() as { error?: string; events?: StaffEvent[] }
+        if (!response.ok) throw new Error(data.error || `Could not load events (${response.status})`)
+        setStaffEvents(data.events ?? [])
+      } catch (cause) {
+        setStaffEventsError(cause instanceof Error ? cause.message : 'Could not load events.')
+      } finally {
+        setStaffEventsLoading(false)
+      }
+    })()
   }, [])
 
   const splitStates = (value: string) => value.split(',').map((state) => state.trim()).filter(Boolean)
@@ -55,6 +67,10 @@ export function DashboardAccessManager() {
 
   async function createStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!newStaffStates.length && !newStaffEvents.length) {
+      setError('Choose at least one state or event for this staff member.')
+      return
+    }
     setSaving(true)
     setError('')
     setNotice('')
@@ -63,12 +79,13 @@ export function DashboardAccessManager() {
         method: 'POST',
         credentials: 'include',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({ ...newStaff, states: splitStates(newStaff.states), eventIds: newStaffEvents }),
+        body: JSON.stringify({ ...newStaff, states: newStaffStates, eventIds: newStaffEvents }),
       })
       const data = await response.json() as { error?: string }
       if (!response.ok) throw new Error(data.error || `Could not add staff (${response.status})`)
       setAddingStaff(false)
-      setNewStaff({ fullName: '', email: '', password: '', states: '' })
+      setNewStaff({ fullName: '', email: '', password: '' })
+      setNewStaffStates([])
       setNewStaffEvents([])
       setNotice(`Staff account created for ${newStaff.fullName}. Share the password with them securely.`)
       await loadUsers()
@@ -185,7 +202,14 @@ export function DashboardAccessManager() {
         <div className="role-access-title">
           <span className="role-access-icon"><ShieldCheck size={25} /></span>
           <div><p className="role-eyebrow">Platform administration</p><h1>Users &amp; Roles</h1><p>Manage account access, dashboard roles and additional permissions.</p></div>
-          <button type="button" className="role-access-refresh" onClick={() => { setError(''); setNotice(''); setAddingStaff(true) }}>
+          <button type="button" className="role-access-refresh" onClick={() => {
+            setError('')
+            setNotice('')
+            setNewStaff({ fullName: '', email: '', password: '' })
+            setNewStaffStates([])
+            setNewStaffEvents([])
+            setAddingStaff(true)
+          }}>
             <Users size={15} /> Add staff
           </button>
           <button type="button" className="role-access-refresh" onClick={() => void loadUsers()} disabled={loading}>
@@ -233,21 +257,37 @@ export function DashboardAccessManager() {
       </div>
       {addingStaff && (
         <div className="role-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setAddingStaff(false) }}>
-          <form className="role-edit-modal" onSubmit={createStaff} aria-labelledby="add-staff-title">
+          <form className="role-edit-modal role-staff-modal" onSubmit={createStaff} aria-labelledby="add-staff-title">
             <button type="button" className="role-modal-close" onClick={() => setAddingStaff(false)} aria-label="Close" disabled={saving}><X size={18} /></button>
             <p className="role-eyebrow">New staff</p>
             <h2 id="add-staff-title">Add event staff</h2>
-            <p className="role-modal-email">Staff can scan and see attendees only for the states/events assigned here.</p>
-            <label className="role-access-filter"><span>Full name</span><input required minLength={2} value={newStaff.fullName} onChange={(event) => setNewStaff({ ...newStaff, fullName: event.target.value })} /></label>
-            <label className="role-access-filter"><span>Email</span><input required type="email" value={newStaff.email} onChange={(event) => setNewStaff({ ...newStaff, email: event.target.value })} /></label>
-            <label className="role-access-filter"><span>Temporary password (min 12 characters)</span><input required type="password" minLength={12} autoComplete="new-password" value={newStaff.password} onChange={(event) => setNewStaff({ ...newStaff, password: event.target.value })} /></label>
-            <fieldset className="role-permission-fieldset"><legend>State &amp; event assignment</legend>
-              <input type="text" value={newStaff.states} onChange={(event) => setNewStaff({ ...newStaff, states: event.target.value })} placeholder="States, e.g. Madhya Pradesh, Maharashtra" aria-label="Allowed states" />
-              <p className="role-permission-help">Or pick specific events:</p>
-              <div className="role-permission-options">{staffEvents.map((item) => <label className="role-permission-choice" key={item.id}>
-                <input type="checkbox" checked={newStaffEvents.includes(item.id)} onChange={() => setNewStaffEvents((current) => toggleId(current, item.id))} />
-                <span>{item.title} · {[item.city, item.state].filter(Boolean).join(', ')}</span>
-              </label>)}</div>
+            <p className="role-modal-email">Staff can scan and view attendees only for the states or events assigned here.</p>
+            <div className="role-staff-fields">
+              <label className="role-staff-field"><span>Full name</span><input required minLength={2} maxLength={160} autoComplete="name" value={newStaff.fullName} onChange={(event) => setNewStaff({ ...newStaff, fullName: event.target.value })} /></label>
+              <label className="role-staff-field"><span>Email</span><input required type="email" autoComplete="email" maxLength={255} value={newStaff.email} onChange={(event) => setNewStaff({ ...newStaff, email: event.target.value })} /></label>
+              <label className="role-staff-field"><span>Temporary password</span><input required type="password" minLength={12} maxLength={128} autoComplete="new-password" value={newStaff.password} onChange={(event) => setNewStaff({ ...newStaff, password: event.target.value })} /><small>Use at least 12 characters.</small></label>
+            </div>
+            <fieldset className="role-permission-fieldset role-staff-assignment"><legend>State &amp; event assignment</legend>
+              <p className="role-permission-help">Choose one or more states, specific events, or both. At least one assignment is required.</p>
+              <label className="role-staff-field"><span>States they can access</span>
+                <select value="" onChange={(event) => {
+                  const state = event.target.value
+                  if (state && !newStaffStates.includes(state)) setNewStaffStates((current) => [...current, state])
+                }}>
+                  <option value="">Select a state to add…</option>
+                  {[...indianStates, ...indianUnionTerritories].map((state) => <option key={state} value={state} disabled={newStaffStates.includes(state)}>{state}</option>)}
+                </select>
+              </label>
+              {newStaffStates.length > 0 && <div className="role-staff-state-list" aria-label="Selected states">
+                {newStaffStates.map((state) => <button type="button" className="role-staff-state-chip" key={state} onClick={() => setNewStaffStates((current) => current.filter((entry) => entry !== state))}>{state}<span aria-hidden="true">×</span><span className="role-sr-only">Remove {state}</span></button>)}
+              </div>}
+              <div className="role-staff-events-heading"><span>Specific events</span>{staffEvents.length > 0 && <small>{newStaffEvents.length} selected</small>}</div>
+              {staffEventsLoading ? <p className="role-staff-events-message">Loading available events…</p> : staffEventsError ? <p className="role-error" role="alert">{staffEventsError}</p> : staffEvents.length ? (
+                <div className="role-staff-event-options">{staffEvents.map((item) => <label className="role-staff-event-choice" key={item.id}>
+                  <input type="checkbox" checked={newStaffEvents.includes(item.id)} onChange={() => setNewStaffEvents((current) => toggleId(current, item.id))} />
+                  <span><strong>{item.title}</strong><small>{[item.city, item.state].filter(Boolean).join(' · ')}</small></span>
+                </label>)}</div>
+              ) : <p className="role-staff-events-message">No active events are available. You can still assign access by state.</p>}
             </fieldset>
             {error && <p className="role-error" role="alert">{error}</p>}
             <div className="role-modal-actions"><button type="button" className="role-cancel-button" onClick={() => setAddingStaff(false)} disabled={saving}>Cancel</button><button type="submit" className="role-save-button" disabled={saving}><Save size={15} /> {saving ? 'Creating…' : 'Create staff'}</button></div>

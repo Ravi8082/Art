@@ -1,25 +1,37 @@
 import { PublicShell } from '@/components/public-shell'
-import { ContactForm } from '@/components/contact-form'
+import { ContactConcierge } from '@/components/contact-concierge'
 import { ContactIntro } from '@/components/contact-intro'
-import { apiBaseUrl, getHomepageMedia, getShell } from '@/lib/api'
-import { contactDetails, contactHero, contactNotice, contactPartners } from '@/lib/demo-contact'
+import { apiBaseUrl, getContactSettings, getHomepageMedia, getShell } from '@/lib/api'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 30
 export const metadata = { title: 'Contact The Haat of Art – Stalls, Collaborations & Enquiries', description: 'Contact The Haat of Art for stall bookings, artist collaborations, sponsorship and partnership enquiries.', alternates: { canonical: '/contact' } }
 
 export default async function ContactPage() {
-  const [{ content, shell }, media] = await Promise.all([getShell(), getHomepageMedia()])
-  const value = (key: string, fallback: string) => content.text[key]?.trim() || fallback
-  const banner = media?.contactHero ? `${apiBaseUrl}${media.contactHero.url}` : contactHero.image
-  const bannerAlt = media?.contactHero?.altText || 'The Haat of Art gallery floor'
-  const mapUrl = value('contactMapUrl', contactDetails.mapUrl)
-  const embedMap = mapUrl.includes('output=embed')
-  const isDemo = !content.text.contactAddress && !content.text.contactHeroTitle && !media?.contactHero
-  const socials = [
-    ['Instagram', value('contactInstagram', '')],
-    ['Facebook', value('contactFacebook', '')],
-    ['LinkedIn', value('contactLinkedin', '')],
-  ].filter(([, url]) => url) as [string, string][]
+  const [{ content, shell }, media, contactSettings] = await Promise.all([getShell(), getHomepageMedia(), getContactSettings()])
+  const value = (key: string, fallback = '') => content.text[key]?.trim() || fallback
+  const bannerUrl = media?.contactHero?.url
+  const banner = bannerUrl
+    ? bannerUrl.startsWith('http') ? bannerUrl : `${apiBaseUrl}${bannerUrl}`
+    : '/media/exhibition-gallery.jpeg'
+  const bannerAlt = media?.contactHero?.altText || 'Artwork displayed in an exhibition'
+  const fallbackPhones = value('contactPhone', '+91 7304645333 | +91 8779798244')
+    .split(/[|,\n;]+/)
+    .map((phone) => phone.trim())
+    .filter(Boolean)
+  const contact = contactSettings ?? {
+    address: value('contactAddress', 'C-503, Mayro House, Behind Crystal Plaza, Veera Desai, Andheri (West), Mumbai, India'),
+    phones: fallbackPhones.length ? fallbackPhones : ['+91 7304645333', '+91 8779798244'],
+    email: value('contactEmail', 'contact@thehaatofart.com'),
+    hours: value('contactHours', 'Mon – Sat: 10:00 AM – 6:00 PM'),
+    socialLinks: [],
+  }
+  const mapUrl = value('contactMapUrl')
+  const address = contact.address || 'C-503, Mayro House, Behind Crystal Plaza, Veera Desai, Andheri (West), Mumbai, India'
+  const officeHours = contact.hours || 'Mon – Sat: 10:00 AM – 6:00 PM'
+  const directionsUrl = 'https://maps.google.com/?q=C-503+Mayro+House+Veera+Desai+Andheri+West+Mumbai'
+  const embedMapUrl = mapUrl.includes('output=embed')
+    ? mapUrl
+    : 'https://maps.google.com/maps?q=C-503+Mayro+House+Veera+Desai+Andheri+West+Mumbai&output=embed'
 
   return (
     <PublicShell {...shell}>
@@ -27,64 +39,52 @@ export default async function ContactPage() {
       <div className="ct-page">
         <section className="ct-hero">
           <div className="ct-hero-copy">
-            <p className="public-kicker">Say hello</p>
-            <h1>{value('contactHeroTitle', contactHero.title)} <em>{value('contactHeroAccent', contactHero.accent)}</em></h1>
-            <p className="ct-hero-intro">{value('contactHeroIntro', contactHero.intro)}</p>
+            <p className="public-kicker">Say hello · Indore · Mumbai · Online</p>
+            <h1>{value('contactHeroTitle', "Let's talk about")} <em>{value('contactHeroAccent', 'art.')}</em></h1>
+            <p className="ct-hero-intro">{value('contactHeroIntro', 'For stall bookings, artist collaborations, partnerships, or questions about an upcoming exhibition, send our team a message.')}</p>
             <div className="ct-ctas">
               <a href="#enquiry-form">Send an enquiry ↓</a>
-              <a href="/exhibit-with-us">Book a stall</a>
+              <a href="/exhibitions">Book a stall</a>
               <a href="/artists">Artist collaborations</a>
-              <a href="/partners">Partnerships</a>
+              <a href="#enquiry-form">Partnerships</a>
             </div>
           </div>
           <div className="ct-hero-media">
             <img src={banner} alt={bannerAlt} />
-            <span className="ct-hero-tag">Indore · Mumbai · Online</span>
           </div>
         </section>
 
-        <section className="ct-cards">
-          <article><strong>Visit the studio</strong><p>{value('contactAddress', contactDetails.address)}</p></article>
-          <article><strong>Call us</strong><p><a href={`tel:${value('contactPhone', contactDetails.phone).replace(/\s/g, '')}`}>{value('contactPhone', contactDetails.phone)}</a></p></article>
-          <article><strong>Write to us</strong><p><a href={`mailto:${value('contactEmail', contactDetails.email)}`}>{value('contactEmail', contactDetails.email)}</a></p></article>
-          <article><strong>Business hours</strong><p>{value('contactHours', contactDetails.hours)}</p></article>
-        </section>
+        <ContactConcierge
+          contact={contact}
+          notice={content.text.contactNotice?.trim() || undefined}
+        />
 
-        <section className="ct-main" id="enquiry-form">
-          <div className="ct-form-panel">
-            <h2>Tell us what you have in <em>mind.</em></h2>
-            <p className="ct-muted">Every field except the mobile number and attachment is required. You will get an enquiry reference ID on the next screen.</p>
-            <ContactForm />
-            <p className="ct-notice">{value('contactNotice', contactNotice)}</p>
+        <section className="ct-map ct-location-card" aria-labelledby="ct-map-title">
+          <div className="ct-map-copy ct-location-copy">
+            <p className="ct-section-kicker">Visit our studio</p>
+            <h2 id="ct-map-title">Find the <em>haat.</em></h2>
+            <address>{address}</address>
+            <p className="ct-location-landmark">Behind Crystal Plaza, Veera Desai Road, Andheri West</p>
+            <p className="ct-location-hours"><strong>Office hours</strong><span>{officeHours}</span></p>
+            <a className="public-button dark ct-map-directions" href={directionsUrl} target="_blank" rel="noopener noreferrer">
+              Open in Google Maps ↗
+            </a>
           </div>
-          <aside className="ct-side">
-            <h3>Where your message goes</h3>
-            <ol className="ct-flow">
-              <li><strong>Recorded instantly</strong><span>Your enquiry is stored with a reference ID — no OTP, no waiting.</span></li>
-              <li><strong>Routed to a person</strong><span>Stall bookings, artists, media and sponsorships each reach the right desk.</span></li>
-              <li><strong>Answered in 2 working days</strong><span>Follow-ups are tracked so nothing gets quietly forgotten.</span></li>
-            </ol>
-            <div className="ct-socials">
-              {socials.map(([label, url]) => <a key={label} href={url} target="_blank" rel="noopener noreferrer">{label}</a>)}
-              {!socials.length && <span>Social links appear here once published from the Admin Panel.</span>}
-            </div>
-          </aside>
-        </section>
-
-        <section className="ct-map">
-          <div className="ct-map-copy">
-            <h2>Find the <em>haat.</em></h2>
-            <p>{value('contactAddress', contactDetails.address)}</p>
-            <a className="public-button dark" href={mapUrl} target="_blank" rel="noopener noreferrer">Get directions</a>
+          <div className="ct-location-embed">
+            <iframe
+              className="ct-map-frame"
+              src={embedMapUrl}
+              title="Google Maps: The Haat of Art, Veera Desai, Andheri West, Mumbai"
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+            />
           </div>
-          {embedMap
-            ? <iframe className="ct-map-frame" src={mapUrl} title="The Haat of Art location" loading="lazy" allowFullScreen referrerPolicy="no-referrer-when-downgrade" />
-            : <div className="ct-map-frame ct-map-placeholder"><span>{value('contactHours', contactDetails.hours)}</span><small>Set a Google Maps embed link in the Admin Panel to show the live map here.</small></div>}
         </section>
 
         {content.text.contactPartnersText && (
           <section className="ct-partners">
-            <h2>{value('contactPartnersTitle', contactPartners.title)}</h2>
+            <h2>{value('contactPartnersTitle', 'Our Partners')}</h2>
             <p>{content.text.contactPartnersText}</p>
           </section>
         )}

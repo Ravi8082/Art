@@ -1,11 +1,23 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { ArrowUpRight } from 'lucide-react'
 import { apiBaseUrl } from '@/lib/api'
 import { getPublicArtist } from '@/lib/booking-server'
 import { PublicShell } from '@/components/public-shell'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 30
+
+export async function generateMetadata({ params }: { params: Promise<{ userId: string }> }): Promise<Metadata> {
+  const { userId } = await params
+  const profile = (await getPublicArtist(userId))?.profile
+  if (!profile) return { robots: { index: false, follow: true } }
+  return {
+    title: `${profile.displayName} · The Haat of Art`,
+    description: (profile.headline || profile.bio || `Discover ${profile.displayName}'s work.`).slice(0, 160),
+    alternates: { canonical: `/artists/u/${encodeURIComponent(userId)}` },
+  }
+}
 
 export default async function PublicArtistPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = await params

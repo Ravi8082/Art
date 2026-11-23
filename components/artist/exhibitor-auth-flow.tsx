@@ -63,13 +63,13 @@ export function ExhibitorRegistrationForm() {
 
   return (
     <ArtistAuthCard step={1}>
-      <h2>Create Your Artist Account</h2>
+      <h1>Create Your Artist Account</h1>
       <p className="ar-sub">Join our community and start your journey.</p>
       <form className="ar-form" onSubmit={submit}>
         <label className="ar-field"><span>Full Name<em> *</em></span><input autoComplete="name" required minLength={2} maxLength={160} value={fullName} onChange={(event) => setFullName(event.target.value)} /></label>
         <label className="ar-field"><span>Email Address<em> *</em></span><input type="email" autoComplete="email" required maxLength={255} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
         <label className="ar-field"><span>Password<em> *</em></span><input type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} /><small>Use at least 12 characters.</small></label>
-        <label className="ar-check"><input type="checkbox" required /> I agree to the <Link href="/contact">Terms &amp; Conditions</Link> and <Link href="/contact">Privacy Policy</Link></label>
+        <label className="ar-check"><input type="checkbox" required /> I agree to the <Link href="/terms-and-conditions">Terms &amp; Conditions</Link> and <Link href="/privacy-policy">Privacy Policy</Link></label>
         {error && <p className="role-error" role="alert">{error}</p>}
         <button className="th-btn ar-wide" type="submit" disabled={busy}>{busy ? 'Creating account…' : 'Send verification code →'}</button>
       </form>
@@ -119,7 +119,7 @@ function VerifyEmailForm() {
   return (
     <ArtistAuthCard step={2}>
       <div className="ar-mail" aria-hidden="true"><Mail size={32} /></div>
-      <h2>Verify Your Email</h2>
+      <h1>Verify Your Email</h1>
       <p className="ar-sub">Enter the 6-digit verification code sent to<br /><b>{email || 'your email address'}</b></p>
       {!email && <p className="role-error" role="alert">Email address is missing. Please start again from registration.</p>}
       <form className="ar-form" onSubmit={verify}>

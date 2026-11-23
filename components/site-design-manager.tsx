@@ -64,8 +64,8 @@ export function SiteDesignManager() {
     })
   }
 
-  if (state === 'loading') return <section className="account-page"><p>Loading…</p></section>
-  if (state === 'denied') return <section className="account-page"><p>You do not have access to edit the site design.</p></section>
+  if (state === 'loading') return <section className="account-page sd-page sd-state-page"><p className="sd-kicker">The Haat of Art · Admin studio</p><h1>Site &amp; Theme Studio</h1><p>Loading your saved site settings…</p></section>
+  if (state === 'denied') return <section className="account-page sd-page sd-state-page"><p className="sd-kicker">The Haat of Art · Admin studio</p><h1>Site &amp; Theme Studio</h1><p>You do not have access to edit the site design.</p><Link className="sd-shortcut" href="/dashboard">Back to Dashboard</Link></section>
 
   const { theme, navbar, footer } = settings
   const text = (label: string, key: 'about' | 'script' | 'scriptSub' | 'newsletterTitle' | 'newsletterText' | 'address' | 'phone' | 'email' |   'hours' | 'copyright' | 'partnersTitle' | 'whatsapp') => (
@@ -78,17 +78,36 @@ export function SiteDesignManager() {
     <section className="account-page sd-page">
       <Link className="account-back" href="/dashboard"><ArrowLeft size={16} /> Dashboard</Link>
       <header className="sd-head">
-        <div><h1>Site design</h1><p>Edit the navbar, footer, theme colours and contact details here. For images use the <Link href="/dashboard/homepage-media">Media library</Link> and for page text use <Link href="/dashboard/content">Website content</Link>.</p></div>
+        <div className="sd-title-block">
+          <p className="sd-kicker">The Haat of Art · Admin studio</p>
+          <h1>Site &amp; Theme Studio</h1>
+          <p>Manage your website colours, navigation, footer and contact details from one place.</p>
+        </div>
         <div className="sd-actions">
           <button type="button" className="sd-ghost" onClick={reset} disabled={busy}><RotateCcw size={16} /> Reset</button>
           <button type="button" className="sd-primary" onClick={save} disabled={busy}><Save size={16} /> {busy ? 'Saving…' : 'Save changes'}</button>
         </div>
       </header>
+      <nav className="sd-shortcuts" aria-label="Site design shortcuts">
+        <Link className="sd-shortcut sd-shortcut-primary" href="/" target="_blank" rel="noopener noreferrer">View live website</Link>
+        <Link className="sd-shortcut" href="/blog" target="_blank" rel="noopener noreferrer">Blog</Link>
+        <Link className="sd-shortcut" href="/dashboard/homepage-media">Media library</Link>
+        <Link className="sd-shortcut" href="/dashboard/homepage">Homepage manager</Link>
+      </nav>
+      <nav className="sd-jumps" aria-label="Jump to a section">
+        <a href="#theme-colours">Theme colours</a>
+        <a href="#navbar-links">Navbar links</a>
+        <a href="#footer-contact">Footer text &amp; contact</a>
+        <a href="#social-links">Social links</a>
+        <a href="#footer-columns">Footer link columns</a>
+        <a href="#partners-supporters">Partners &amp; supporters</a>
+      </nav>
       {message && <p className="sd-msg" role="status">{message}</p>}
       {error && <p className="sd-err" role="alert">{error}</p>}
 
-      <section className="sd-card">
+      <section className="sd-card" id="theme-colours">
         <h2>Theme colours</h2>
+        <p className="sd-hint">Choose a colour or enter its hex value using the picker. Preview your changes before saving.</p>
         <div className="sd-colors">
           {(Object.keys(themeLabels) as (keyof SiteSettings['theme'])[]).map((key) => (
             <label key={key} className="sd-color">
@@ -105,8 +124,9 @@ export function SiteDesignManager() {
         </div>
       </section>
 
-      <section className="sd-card">
+      <section className="sd-card" id="navbar-links">
         <h2>Navbar links</h2>
+        <p className="sd-hint">Choose which pages appear in the website navigation, change their order, or mark one as a button.</p>
         <label className="sd-check"><input type="checkbox" checked={navbar.showSearch} onChange={(e) => setSettings((s) => ({ ...s, navbar: { ...s.navbar, showSearch: e.target.checked } }))} /> Search icon dikhayein</label>
         {navbar.links.map((link, i) => (
           <div className="sd-row" key={i}>
@@ -122,7 +142,7 @@ export function SiteDesignManager() {
         {navbar.links.length < 14 && <button type="button" className="sd-add" onClick={() => setLinks([...navbar.links, { label: 'New link', href: '/', visible: true, highlight: false }])}><Plus size={15} /> Add link</button>}
       </section>
 
-      <section className="sd-card">
+      <section className="sd-card" id="footer-contact">
         <h2>Footer text & contact</h2>
         <div className="sd-grid">
           {text('About text', 'about')}
@@ -140,9 +160,9 @@ export function SiteDesignManager() {
         </div>
       </section>
 
-      <section className="sd-card">
+      <section className="sd-card" id="social-links">
         <h2>Social links</h2>
-        <p className="sd-hint">Enter a full URL starting with https://. If left empty, the icon links to /contact.</p>
+        <p className="sd-hint">Enter a full URL starting with https://. Empty social links remain visible but are not clickable until configured.</p>
         <div className="sd-grid">
           {(['facebook', 'instagram', 'youtube', 'linkedin', 'x'] as const).map((key) => (
             <label className="sd-field" key={key}>{key}<input placeholder="https://" value={footer.social[key]} onChange={(e) => patchFooter({ social: { ...footer.social, [key]: e.target.value } })} /></label>
@@ -150,8 +170,9 @@ export function SiteDesignManager() {
         </div>
       </section>
 
-      <section className="sd-card">
+      <section className="sd-card" id="footer-columns">
         <h2>Footer link columns</h2>
+        <p className="sd-hint">Organise Quick Links, For Artists, For Visitors and Legal links into clear footer columns.</p>
         {footer.columns.map((col, ci) => {
           const setLinksOf = (links: SiteLink[]) => setColumns(footer.columns.map((c, k) => k === ci ? { ...c, links } : c))
           return (
@@ -178,7 +199,7 @@ export function SiteDesignManager() {
         {footer.columns.length < 5 && <button type="button" className="sd-add" onClick={() => setColumns([...footer.columns, { title: 'New column', links: [] }])}><Plus size={15} /> Add column</button>}
       </section>
 
-      <section className="sd-card">
+      <section className="sd-card" id="partners-supporters">
         <h2>Partners & supporters</h2>
         {footer.partners.map((name, i) => (
           <div className="sd-row" key={i}>
@@ -192,6 +213,7 @@ export function SiteDesignManager() {
       </section>
 
       <div className="sd-actions sd-bottom">
+        <button type="button" className="sd-ghost" onClick={reset} disabled={busy}><RotateCcw size={16} /> Reset</button>
         <button type="button" className="sd-primary" onClick={save} disabled={busy}><Save size={16} /> {busy ? 'Saving…' : 'Save changes'}</button>
       </div>
     </section>
