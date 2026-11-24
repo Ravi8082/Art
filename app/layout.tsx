@@ -1,14 +1,16 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { Cormorant_Garamond, Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import './home.css'
 import './role-dashboard.css'
+import './analytics-consent.css'
 import { getShell, getSiteSettings } from '@/lib/api'
 import { themeCss } from '@/lib/site-settings'
 import { SiteSettingsProvider } from '@/components/site-settings-provider'
 import { SiteChrome } from '@/components/site-chrome'
 import { PwaRegistration } from '@/components/pwa-registration'
+import { AnalyticsConsent } from '@/components/analytics-consent'
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-jakarta', display: 'swap' })
 const cormorant = Cormorant_Garamond({ subsets: ['latin'], weight: ['400', '500', '600', '700'], style: ['normal', 'italic'], variable: '--font-cormorant', display: 'swap' })
@@ -70,16 +72,18 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   const [settings, { shell }] = await Promise.all([getSiteSettings(), getShell()])
+  // SECURITY: Reuse the per-request nonce from Proxy for the fixed theme CSS and JSON-LD script.
+  const nonce = (await headers()).get('x-nonce') ?? undefined
   return (
     <html lang="en" className={`${jakarta.variable} ${cormorant.variable}`}>
-      <head><style id="site-theme" dangerouslySetInnerHTML={{ __html: themeCss(settings.theme) }} /></head>
+      <head><style id="site-theme" nonce={nonce} dangerouslySetInnerHTML={{ __html: themeCss(settings.theme) }} /></head>
       <body className="antialiased">
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
         <PwaRegistration />
         <SiteSettingsProvider value={settings}>
           <SiteChrome logoUrl={shell.logoUrl} logoAlt={shell.logoAlt} footerLocations={shell.footerLocations}>{children}</SiteChrome>
         </SiteSettingsProvider>
-        {process.env.VERCEL === '1' && <Analytics />}
+        <AnalyticsConsent />
       </body>
     </html>
   )

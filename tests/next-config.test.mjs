@@ -56,6 +56,7 @@ test('security headers are still applied to every route', async () => {
   const [rule] = await config.headers()
   assert.equal(rule.source, '/(.*)')
   assert.ok(rule.headers.some((h) => h.key === 'Strict-Transport-Security'))
+  assert.ok(rule.headers.some((h) => h.key === 'X-Frame-Options' && h.value === 'DENY'))
   assert.ok(rule.headers.some((h) => h.key === 'Permissions-Policy' && h.value.includes('camera=(self)')))
 })
 

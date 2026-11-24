@@ -2,12 +2,14 @@
 
 import { useRef, useState, type FormEvent } from 'react'
 import { contactEnquiryCategories } from '@/lib/demo-contact'
+import { readLeadAttribution } from '@/lib/analytics'
+import { trackMetaLead } from '@/lib/meta-pixel'
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const attachmentTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const maxAttachmentBytes = 5 * 1024 * 1024
 
-type FieldErrors = Partial<Record<'name' | 'email' | 'phone' | 'subject' | 'message' | 'consent' | 'attachment', string>>
+type FieldErrors = Partial<Record<'name' | 'email' | 'phone' | 'subject' | 'message' | 'consent' | 'whatsappConsent' | 'attachment', string>>
 
 export function ContactForm({
   category,
@@ -32,12 +34,14 @@ export function ContactForm({
     const phone = String(data.get('phone') ?? '')
     const subject = String(data.get('subject') ?? '')
     const message = String(data.get('message') ?? '')
+    const whatsappMarketingConsent = data.get('marketingWhatsAppConsent') === 'on'
     if (name.trim().length < 2) next.name = 'Please enter your full name.'
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) next.email = 'Please enter a valid email address.'
     if (phone && !/^[0-9+()\s-]{6,30}$/.test(phone.trim())) next.phone = 'Use digits, spaces and + ( ) - only.'
     if (subject.trim().length < 3) next.subject = 'Add a short subject (at least 3 characters).'
     if (message.trim().length < 10) next.message = 'Tell us a little more — at least 10 characters.'
     if (!form.querySelector<HTMLInputElement>('[name=consent]')?.checked) next.consent = 'Please accept the privacy notice.'
+    if (whatsappMarketingConsent && phone.replace(/\D/g, '').length < 10) next.whatsappConsent = 'Add a valid mobile number to opt in to WhatsApp updates.'
     if (attachment && !attachmentTypes.includes(attachment.type)) next.attachment = 'Attachments can be PDF, JPG, PNG, WebP or GIF.'
     else if (attachment && attachment.size > maxAttachmentBytes) next.attachment = 'Attachments must be 5 MB or smaller.'
     return next
@@ -58,6 +62,7 @@ export function ContactForm({
     setStatus('sending')
     setError('')
     const data = new FormData(form)
+    const attribution = readLeadAttribution()
     try {
       const response = await fetch(`${apiBaseUrl}/api/contact`, {
         method: 'POST',
@@ -70,6 +75,9 @@ export function ContactForm({
           subject: String(data.get('subject') ?? '').trim(),
           message: String(data.get('message') ?? '').trim(),
           consent: true,
+          marketingEmailConsent: data.get('marketingEmailConsent') === 'on',
+          marketingWhatsAppConsent: data.get('marketingWhatsAppConsent') === 'on',
+          ...attribution,
         }),
       })
       const payload = await response.json().catch(() => ({})) as { ok?: boolean; id?: string; refCode?: string; error?: string }
@@ -82,6 +90,7 @@ export function ContactForm({
       }
       setRefCode(payload.refCode)
       setStatus('sent')
+      if (payload.id) trackMetaLead()
       if (attachment && payload.id) {
         setAttachmentNotice('')
         try {
@@ -148,9 +157,18 @@ export function ContactForm({
       {errors.attachment && <p className="ct-field-error">{errors.attachment}</p>}
       <label className="ct-consent">
         <input type="checkbox" name="consent" />
-        <span>I agree that The Haat of Art may contact me about this enquiry. <em>Privacy notice.</em></span>
+        <span>I agree that The Haat of Art may contact me about this enquiry. <a href="/privacy-policy">Privacy notice.</a></span>
       </label>
       {errors.consent && <p className="ct-field-error">{errors.consent}</p>}
+      <label className="ct-consent">
+        <input type="checkbox" name="marketingEmailConsent" />
+        <span>Email me about exhibitions, artist stories and offers. I can unsubscribe anytime.</span>
+      </label>
+      <label className="ct-consent">
+        <input type="checkbox" name="marketingWhatsAppConsent" />
+        <span>Allow occasional exhibition and website updates on WhatsApp. Optional and separate from your enquiry; contact us to opt out.</span>
+      </label>
+      {errors.whatsappConsent && <p className="ct-field-error">{errors.whatsappConsent}</p>}
       <button className="public-button dark" disabled={status === 'sending'}>{status === 'sending' ? 'Sending…' : 'Send message'}</button>
       {status === 'error' && error && <p className="form-error" role="alert">{error}</p>}
     </form>

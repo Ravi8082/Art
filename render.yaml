@@ -23,6 +23,9 @@ services:
       # Vercel -> Render -> app: the real client IP is the third address from the socket. Verify after deploy.
       - key: TRUST_PROXY
         value: "2"
+      # Required: connect a managed Redis-compatible store and set its private TLS URL.
+      - key: REDIS_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: COOKIE_SECRET

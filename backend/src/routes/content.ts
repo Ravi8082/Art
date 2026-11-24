@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { raw, Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
 import { pool } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'

@@ -1,39 +1,72 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import type { Response } from 'express'
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from '../services/rate-limit.js'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { sessionCookieOptions } from '../middleware/session-cookie.js'
 import { createOtp, verifyOtp } from '../services/mailer.js'
 import { recordAudit } from '../services/audit.js'
+import { sessionVersionMatches } from '../services/session-version.js'
 
 export const authRouter = Router()
 const registerSchema = z.object({ email: z.string().email().max(255), password: z.string().min(12).max(128), fullName: z.string().trim().min(2).max(160) })
+// SECURITY: Compare unknown accounts against a cost-12 dummy hash to reduce email-enumeration timing differences.
+const dummyPasswordHash = bcrypt.hash(crypto.randomUUID(), 12)
 const secret = () => {
   const value = process.env.JWT_SECRET
   if (!value || value.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters')
   return value
 }
-const issue = (id: string) => jwt.sign({ sub: id }, secret(), { expiresIn: '15m' })
-const otpRequestLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
-const otpVerifyLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
+const issue = (id: string, sessionVersion: number) => jwt.sign({ sub: id, sessionVersion }, secret(), { algorithm: 'HS256', expiresIn: '15m' })
+// SECURITY: Hash normalized email together with the normalized IP so Redis throttles account-specific abuse without retaining plaintext addresses.
+const emailRateLimitKey = (req: Request) =>
+  `${ipKeyGenerator(req.ip ?? '0.0.0.0')}|${crypto.createHash('sha256').update(String(req.body?.email ?? '').toLowerCase().slice(0, 255)).digest('hex')}`
+const registrationLimit = rateLimit({ windowMs: 60 * 1000, limit: 3, standardHeaders: true, legacyHeaders: false })
+const otpRequestLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  keyGenerator: emailRateLimitKey,
+  validate: { keyGeneratorIpFallback: false },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+const otpVerifyLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 5,
+  keyGenerator: (req) => {
+    const mfaToken = req.body?.mfaToken
+    if (typeof mfaToken === 'string') {
+      try {
+        const payload = jwt.verify(mfaToken, secret(), { algorithms: ['HS256'] }) as { sub?: string; purpose?: string }
+        if (payload.purpose === 'mfa' && payload.sub) return `user:${payload.sub}`
+      } catch {
+        return emailRateLimitKey(req)
+      }
+    }
+    return emailRateLimitKey(req)
+  },
+  validate: { keyGeneratorIpFallback: false },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
 const visitorResumeLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false })
+const loginIpLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false })
 // Brute-force guard: counted per client IP and email, failed and successful attempts alike.
 const loginLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
-  keyGenerator: (req) => `${req.ip}|${String(req.body?.email ?? '').toLowerCase().slice(0, 120)}`,
+  windowMs: 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: emailRateLimitKey,
   validate: { keyGeneratorIpFallback: false },
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 })
-const setSession = (res: Response, id: string) => {
-  res.cookie('session', issue(id), sessionCookieOptions())
+const setSession = (res: Response, id: string, sessionVersion: number) => {
+  res.cookie('session', issue(id, sessionVersion), sessionCookieOptions())
 }
 
-authRouter.post('/register', otpRequestLimit, async (req, res, next) => {
+authRouter.post('/register', registrationLimit, async (req, res, next) => {
   try {
     const input = registerSchema.parse(req.body)
     const id = crypto.randomUUID()
@@ -56,9 +89,9 @@ authRouter.post('/register', otpRequestLimit, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-const issueMfaToken = (id: string) => jwt.sign({ sub: id, purpose: 'mfa' }, secret(), { expiresIn: '5m' })
+const issueMfaToken = (id: string, sessionVersion: number) => jwt.sign({ sub: id, sessionVersion, purpose: 'mfa' }, secret(), { algorithm: 'HS256', expiresIn: '5m' })
 
-const MAX_FAILED_LOGINS = 3
+const MAX_FAILED_LOGINS = 5
 const LOGIN_FAILURE_WINDOW_MINUTES = 15
 export const LOGIN_OTP_MESSAGE = "We've sent a 6-digit code to your email. Enter it here."
 
@@ -75,7 +108,7 @@ async function recentFailedLogins(userId: string) {
   return Number(rows[0]?.c ?? 0)
 }
 
-async function requireLoginOtp(res: Response, user: { id: string; email: string }) {
+async function requireLoginOtp(res: Response, user: { id: string; email: string; session_version: number | string }) {
   // A code requested moments ago is still valid, so a cooldown error is not fatal.
   const mail = await createOtp(user.id, 'LOGIN', user.email).catch((error: { status?: number }) => {
     if (error.status === 429) return { delivered: true }
@@ -86,28 +119,25 @@ async function requireLoginOtp(res: Response, user: { id: string; email: string 
     error: `${LOGIN_OTP_MESSAGE} Please complete the sign-in on the /login page.`,
     message: LOGIN_OTP_MESSAGE,
     mfaRequired: true,
-    mfaToken: issueMfaToken(user.id),
+    mfaToken: issueMfaToken(user.id, Number(user.session_version)),
   })
 }
 
-authRouter.post('/login', loginLimit, async (req, res, next) => {
+authRouter.post('/login', loginIpLimit, loginLimit, async (req, res, next) => {
   try {
-    const input = z.object({ email: z.string().email(), password: z.string() }).parse(req.body)
-    const [rows] = await pool.query<any[]>('SELECT id,email,password_hash,status,email_verified_at FROM users WHERE email=?', [input.email.toLowerCase()])
+    const input = z.object({ email: z.string().email().max(255), password: z.string().min(1).max(128) }).parse(req.body)
+    const [rows] = await pool.query<any[]>('SELECT id,email,password_hash,status,email_verified_at,session_version FROM users WHERE email=?', [input.email.toLowerCase()])
     const user = rows[0]
-    const passwordOk = Boolean(user) && await bcrypt.compare(input.password, user.password_hash)
+    const passwordHash = user?.password_hash ?? await dummyPasswordHash
+    const passwordOk = await bcrypt.compare(input.password, passwordHash)
     const eligible = Boolean(user) && user.status === 'ACTIVE' && Boolean(user.email_verified_at)
-    if (eligible) {
-      const failures = await recentFailedLogins(user.id)
-      // After three wrong passwords a code is required, even if the password is now correct.
-      if (failures >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
-      if (!passwordOk) {
-        await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id)
-        if (failures + 1 >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
-      }
+    if (!user || !passwordOk || !eligible) {
+      if (user && eligible && !passwordOk) await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id)
+      return res.status(401).json({ error: 'Invalid email or password' })
     }
-    if (!user || !passwordOk || !eligible) return res.status(401).json({ error: 'Invalid credentials or unverified account' })
-    setSession(res, user.id)
+    const failures = await recentFailedLogins(user.id)
+    if (failures >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user)
+    setSession(res, user.id, Number(user.session_version))
     res.json({ userId: user.id })
   } catch (error) { next(error) }
 })
@@ -116,15 +146,18 @@ authRouter.post('/login/verify', otpVerifyLimit, async (req, res, next) => {
   try {
     const input = z.object({ mfaToken: z.string().min(20).max(2000), code: z.string().regex(/^\d{6}$/) }).parse(req.body)
     let userId: string
+    let sessionVersion: number
     try {
-      const payload = jwt.verify(input.mfaToken, secret()) as { sub?: string; purpose?: string }
+      const payload = jwt.verify(input.mfaToken, secret(), { algorithms: ['HS256'] }) as { sub?: string; purpose?: string; sessionVersion?: number }
       if (payload.purpose !== 'mfa' || !payload.sub) throw new Error('wrong token')
       userId = payload.sub
+      sessionVersion = payload.sessionVersion ?? 0
     } catch { return res.status(401).json({ error: 'Verification expired. Please sign in again.' }) }
-    const [rows] = await pool.query<any[]>("SELECT id FROM users WHERE id=? AND status='ACTIVE'", [userId])
-    if (!rows[0] || !(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
+    const [rows] = await pool.query<any[]>("SELECT id, session_version FROM users WHERE id=? AND status='ACTIVE'", [userId])
+    if (!rows[0] || !sessionVersionMatches(sessionVersion, rows[0].session_version)) return res.status(401).json({ error: 'Verification expired. Please sign in again.' })
+    if (!(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
     await recordAudit(userId, 'LOGIN_RESET', 'user', userId)
-    setSession(res, userId)
+    setSession(res, userId, Number(rows[0].session_version))
     res.json({ userId })
   } catch (error) { next(error) }
 })
@@ -132,14 +165,14 @@ authRouter.post('/login/verify', otpVerifyLimit, async (req, res, next) => {
 authRouter.post('/verify-email', otpVerifyLimit, async (req, res, next) => {
   try {
     const input = z.object({ email: z.string().email().max(255), code: z.string().regex(/^\d{6}$/) }).parse(req.body)
-    const [users] = await pool.query<any[]>('SELECT id,status,email_verified_at FROM users WHERE email=?', [input.email.toLowerCase()])
+    const [users] = await pool.query<any[]>('SELECT id,status,email_verified_at,session_version FROM users WHERE email=?', [input.email.toLowerCase()])
     const user = users[0]
     if (!user || user.status === 'SUSPENDED') return res.status(400).json({ error: 'Invalid or expired verification code.' })
     if (user.email_verified_at) return res.status(409).json({ error: 'This email address is already verified.' })
     if (!(await verifyOtp(user.id, 'VERIFY_EMAIL', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
     await pool.query("UPDATE users SET email_verified_at=NOW(),status='ACTIVE' WHERE id=?", [user.id])
     await pool.query('UPDATE visitor_profiles SET email_verified_at=NOW() WHERE email=?', [input.email.toLowerCase()])
-    setSession(res, user.id)
+    setSession(res, user.id, Number(user.session_version))
     res.json({ userId: user.id, verified: true })
   } catch (error) { next(error) }
 })
@@ -164,12 +197,12 @@ authRouter.post('/password-reset/request', otpRequestLimit, async (req, res, nex
     const email = input.email.toLowerCase()
     const [users] = await pool.query<any[]>('SELECT id,status FROM users WHERE email=?', [email])
     const user = users[0]
-    if (!user) return res.status(404).json({ error:'No account found with this email. Please register first.', notRegistered: true })
-    if (user.status === 'ACTIVE') {
+    // SECURITY: Return the same status and message for every valid email to prevent account enumeration.
+    if (user?.status === 'ACTIVE') {
       const mail = await createOtp(user.id, 'RESET_PASSWORD', email)
       if (!mail.delivered) console.error('Password reset OTP email could not be delivered', { reason: mail.reason })
     }
-    res.status(202).json({ ok: true, message: 'A password reset code has been sent to your email.' })
+    res.status(202).json({ ok: true, message: 'If an active account uses this email, a password reset code will be sent.' })
   } catch (error) { next(error) }
 })
 
@@ -186,14 +219,17 @@ authRouter.post('/password-reset/confirm', otpVerifyLimit, async (req, res, next
       return res.status(400).json({ error: 'Invalid or expired password reset code.' })
     }
     const passwordHash = await bcrypt.hash(input.password, 12)
-    await pool.query('UPDATE users SET password_hash=? WHERE id=?', [passwordHash, user.id])
-    await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [user.id])
+    await withTransaction(async (db) => {
+      await db.query("UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=? AND status='ACTIVE'", [passwordHash, user.id])
+      await db.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [user.id])
+    })
+    res.clearCookie('session', sessionCookieOptions())
     res.json({ ok: true, message: 'Your password has been reset. You can now sign in.' })
   } catch (error) { next(error) }
 })
 
 // Exhibitor accounts remain unusable until their email verification code is confirmed.
-authRouter.post('/register-exhibitor', otpRequestLimit, async (req, res, next) => {
+authRouter.post('/register-exhibitor', registrationLimit, async (req, res, next) => {
   try {
     const input = z.object({
       email: z.string().email().max(255),
@@ -225,7 +261,7 @@ authRouter.post('/register-exhibitor', otpRequestLimit, async (req, res, next) =
   }
 })
 
-authRouter.post('/register-visitor', otpRequestLimit, async (req, res, next) => {
+authRouter.post('/register-visitor', registrationLimit, async (req, res, next) => {
   try {
     const input = registerSchema.parse(req.body)
     const email = input.email.toLowerCase()
@@ -305,4 +341,13 @@ authRouter.get('/me', requireAuth, async (req: AuthRequest, res, next) => { try 
     SELECT p.name FROM user_permissions up JOIN permissions p ON p.id=up.permission_id WHERE up.user_id=?
   ) granted_permissions ORDER BY name`, [req.user!.id, req.user!.id]),
 ]); res.json({ user: { ...req.user, isAdmin: req.user!.roles.some((role) => role === 'ADMIN' || role === 'SUPER_ADMIN'), email: rows[0]?.email ?? '', fullName: rows[0]?.fullName ?? '', avatarUrl: rows[0]?.avatarUrl ?? null, permissions: permissions.map((entry: { name: string }) => entry.name) } }) } catch (error) { next(error) } })
-authRouter.post('/revoke-sessions', requireAuth, async (req: AuthRequest, res, next) => { try { await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.user!.id]); res.status(204).end() } catch (error) { next(error) } })
+authRouter.post('/revoke-sessions', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    await withTransaction(async (db) => {
+      await db.query('UPDATE users SET session_version=session_version+1 WHERE id=?', [req.user!.id])
+      await db.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.user!.id])
+    })
+    res.clearCookie('session', sessionCookieOptions())
+    res.status(204).end()
+  } catch (error) { next(error) }
+})

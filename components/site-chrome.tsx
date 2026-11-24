@@ -17,7 +17,7 @@ export function SiteChrome({
 }) {
   const pathname = usePathname()
   const homepage = pathname === '/' || pathname === '/about'
-  const homepageChromePaths = ['/exhibitions', '/exhibit-with-us', '/book-your-stall', '/highlights', '/indore', '/visitor/register', '/visitor/pass', '/gallery', '/artists', '/blog', '/contact', '/login', '/password-reset', '/artist/register', '/artist/verify', '/privacy-policy', '/terms-and-conditions']
+  const homepageChromePaths = ['/exhibitions', '/book-your-stall', '/highlights', '/indore', '/visitor/register', '/visitor/pass', '/gallery', '/artists', '/blog', '/contact', '/login', '/password-reset', '/artist/register', '/artist/verify', '/privacy-policy', '/terms-and-conditions']
   const homeChrome = homepage || homepageChromePaths.some((route) => pathname === route || pathname.startsWith(`${route}/`))
 
   return (

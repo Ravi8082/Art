@@ -2,43 +2,28 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { CalendarDays, CheckCircle2, Clock3, MapPin, ShieldCheck, TicketCheck } from 'lucide-react'
+import { CalendarDays, CheckCircle2, MapPin, ShieldCheck, TicketCheck } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 type PublicPass = {
-  attendee: string
   event: string
   city: string | null
   venue: string | null
   startsAt: string
   endsAt: string
-  passId: string | null
-  passTier: 'FREE' | 'PAID'
-  quantity: number
-  preferredVisitDay: string | null
-  paymentStatus: 'NOT_REQUIRED' | 'PENDING' | 'PAID'
-  status: 'Valid' | 'Payment pending' | 'Used' | 'Not active yet' | 'Expired' | 'Cancelled' | 'Revoked'
-  checkedInAt: string | null
+  status: 'Valid' | 'Not valid'
 }
 
 function isPublicPass(value: unknown): value is PublicPass {
   if (!value || typeof value !== 'object') return false
   const pass = value as Record<string, unknown>
-  return typeof pass.attendee === 'string'
-    && typeof pass.event === 'string'
+  return typeof pass.event === 'string'
     && typeof pass.startsAt === 'string'
     && typeof pass.endsAt === 'string'
-    && typeof pass.status === 'string'
-    && ['Valid', 'Payment pending', 'Used', 'Not active yet', 'Expired', 'Cancelled', 'Revoked'].includes(pass.status)
+    && (pass.status === 'Valid' || pass.status === 'Not valid')
     && (pass.city === null || typeof pass.city === 'string')
     && (pass.venue === null || typeof pass.venue === 'string')
-    && (pass.passId === null || typeof pass.passId === 'string')
-    && (pass.passTier === 'FREE' || pass.passTier === 'PAID')
-    && typeof pass.quantity === 'number'
-    && (pass.preferredVisitDay === null || typeof pass.preferredVisitDay === 'string')
-    && (pass.paymentStatus === 'NOT_REQUIRED' || pass.paymentStatus === 'PENDING' || pass.paymentStatus === 'PAID')
-    && (pass.checkedInAt === null || typeof pass.checkedInAt === 'string')
 }
 
 function dateTimeLabel(value: string) {
@@ -48,12 +33,6 @@ function dateTimeLabel(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
-}
-
-function dateLabel(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Date to be confirmed'
-  return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' }).format(date)
 }
 
 export function VisitorPublicPass({ token }: { token: string }) {
@@ -110,18 +89,10 @@ export function VisitorPublicPass({ token }: { token: string }) {
             : pass && <>
               <span className={`visitor-public-status ${valid ? 'valid' : ''}`}>{pass.status}</span>
               <dl className="visitor-public-details">
-                <div><dt>Visitor</dt><dd>{pass.attendee}</dd></div>
-                {pass.passId && <div><dt>Pass ID</dt><dd>{pass.passId}</dd></div>}
-                <div><dt>Pass type</dt><dd>{pass.passTier === 'FREE' ? 'Free General Entry' : 'VIP Collector & Preview'}</dd></div>
-                <div><dt>Number of passes</dt><dd>{pass.quantity}</dd></div>
-                {pass.preferredVisitDay && <div><dt>Preferred visit day</dt><dd>{dateLabel(pass.preferredVisitDay)}</dd></div>}
                 <div><dt><CalendarDays size={14} /> Exhibition time</dt><dd>{dateTimeLabel(pass.startsAt)} – {dateTimeLabel(pass.endsAt)}</dd></div>
                 <div><dt><MapPin size={14} /> Venue</dt><dd>{[pass.venue, pass.city].filter(Boolean).join(' · ') || 'Venue to be announced'}</dd></div>
-                {pass.checkedInAt && <div><dt><Clock3 size={14} /> Check-in</dt><dd>{dateTimeLabel(pass.checkedInAt)}</dd></div>}
               </dl>
-              <p className="visitor-public-notice">{pass.paymentStatus === 'PENDING'
-                ? 'This VIP reservation is awaiting payment. Payment collection is not enabled yet, and this QR cannot be used for entry until payment is confirmed.'
-                : 'This page shows pass information only. Entry is confirmed by event staff using the website check-in scanner.'}</p>
+              <p className="visitor-public-notice">This page shows pass validity and exhibition details only. Entry is confirmed by event staff using the website check-in scanner.</p>
             </>}
         <Link href="/" className="visitor-public-home">Visit The Haat of Art</Link>
       </section>

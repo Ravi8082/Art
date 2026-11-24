@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { MapPin, Mail, Users, Palette, Send } from 'lucide-react'
+import { MapPin, Mail, Users, Send } from 'lucide-react'
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
-type Summary = { subscribers: number; visitors: number; artists: number; whatsapp?: number } | null
+type Summary = { subscribers: number; visitors: number; whatsapp?: number } | null
 type TourEvent = {
   id: string; title: string; venue: string; status: string; startsAt: string; endsAt: string
   announcedAt: string | null; announceSummary: Summary
@@ -13,7 +13,7 @@ type TourEvent = {
   cities: string[]; states: string[]; visitorCities: { city: string; total: number }[]
 }
 type Overview = {
-  audience: { subscribers: number; visitors: number; artists: number }
+  audience: { subscribers: number; visitors: number }
   artistStates: { state: string; total: number }[]
   events: TourEvent[]
 }
@@ -38,7 +38,7 @@ export function EventTourOverview() {
       const response = await fetch(`${apiBaseUrl}/api/events/${event.id}/${action}`, { method: action === 'announce' ? 'POST' : 'PATCH', credentials: 'include' })
       const body = await response.json().catch(() => ({})) as { error?: string; queued?: number }
       if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`)
-      setNote(action === 'approve' ? 'Event approved. Now publish it.' : action === 'publish' ? 'Event published. Emails to artists, visitors and subscribers have been queued.' : `Emails queued: ${body.queued ?? 0} recipients.`)
+      setNote(action === 'approve' ? 'Event approved. Now publish it.' : action === 'publish' ? 'Event published. Updates are sent only to opted-in visitors and subscribers.' : `Updates queued: ${body.queued ?? 0} email recipients.`)
       await load()
     } catch (cause) {
       setNote(cause instanceof Error ? cause.message : 'Action failed.')
@@ -55,10 +55,9 @@ export function EventTourOverview() {
       <header>
         <p className="eyebrow">Management overview</p>
         <h2 id="tour-overview-title">Tour Overview — Exhibitions, States &amp; Audience</h2>
-        <p>On publish, every artist, subscriber and consenting visitor is automatically queued to receive an email.</p>
+        <p>Updates go to newsletter subscribers and visitors who explicitly opted in. Campaign emails are limited to one per recipient per calendar week.</p>
       </header>
       <div className="tour-audience">
-        <div><Palette size={16} /><b>{audience.artists}</b><small>Artists</small></div>
         <div><Users size={16} /><b>{audience.visitors}</b><small>Past visitors (consented)</small></div>
         <div><Mail size={16} /><b>{audience.subscribers}</b><small>Newsletter subscribers</small></div>
       </div>
@@ -82,7 +81,7 @@ export function EventTourOverview() {
             </div>
             <p className="tour-mail">
               {event.announcedAt && event.announceSummary
-                ? `Mail bhej di gayi (${dateLabel(event.announcedAt)}): ${event.announceSummary.artists} artists, ${event.announceSummary.visitors} visitors, ${event.announceSummary.subscribers} subscribers.`
+                ? `Updates sent (${dateLabel(event.announcedAt)}): ${event.announceSummary.visitors} opted-in visitors, ${event.announceSummary.subscribers} subscribers.`
                 : event.announcedAt ? `Email sent (${dateLabel(event.announcedAt)}).` : event.status === 'PUBLISHED' ? 'Email not sent yet. Click "Send mail now".' : 'Email not sent yet. It is sent as soon as you publish.'}
             </p>
             <div className="tour-actions">

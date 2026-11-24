@@ -1,9 +1,10 @@
 import { raw, Router } from 'express'
 import bcrypt from 'bcryptjs'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
-import { pool } from '../db/pool.js'
+import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
+import { sessionCookieOptions } from '../middleware/session-cookie.js'
 import { hasValidMediaSignature } from '../services/media-validation.js'
 
 export const accountRouter = Router()
@@ -77,7 +78,11 @@ accountRouter.post('/password', requireAuth, rateLimit({ windowMs: 15 * 60 * 100
     const input = z.object({ currentPassword: z.string().min(1).max(128), newPassword: z.string().min(12).max(128) }).parse(req.body)
     const [rows] = await pool.query<any[]>('SELECT password_hash hash FROM users WHERE id=?', [req.user!.id])
     if (!rows[0] || !(await bcrypt.compare(input.currentPassword, rows[0].hash))) return res.status(400).json({ error: 'Current password is incorrect' })
-    await pool.query('UPDATE users SET password_hash=? WHERE id=?', [await bcrypt.hash(input.newPassword, 12), req.user!.id])
+    await withTransaction(async (db) => {
+      await db.query('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?', [await bcrypt.hash(input.newPassword, 12), req.user!.id])
+      await db.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.user!.id])
+    })
+    res.clearCookie('session', sessionCookieOptions())
     res.status(204).end()
   } catch (error) { next(error) }
 })

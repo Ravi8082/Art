@@ -19,14 +19,14 @@ export const highlightsHero = {
   title: 'Highlights',
   text: 'Explore the vibrant experiences, art forms and creative activities at The Haat of Art.',
   image: '/media/installation.jpeg',
-  cta: { label: 'Book Your Stall', href: '/exhibit-with-us' },
+  cta: { label: 'Book Your Stall', href: '/exhibitions' },
 }
 
 export const highlightsCta = {
   title: 'Book Your Stall Now',
   text: "Be a part of India's vibrant art community",
   label: 'Book Your Stall',
-  href: '/exhibit-with-us',
+  href: '/exhibitions',
 }
 
 export const demoHighlights: HighlightItem[] = [

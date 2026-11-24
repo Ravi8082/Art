@@ -1,12 +1,13 @@
 import crypto from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, requireRole, type AuthRequest } from '../middleware/auth.js'
 import { hashOtp, otpCode, otpExpiry, queueEmail } from '../services/mailer.js'
 import { cachePublic } from '../middleware/cache.js'
 import { hashPassToken, newReferenceCode, passIdFromToken, referenceFromScannedValue, referenceQrValue, tokenFromScannedValue } from '../services/pass-token.js'
+import { publicPassView } from '../services/public-pass.js'
 
 export const passesRouter = Router()
 
@@ -243,46 +244,30 @@ passesRouter.get('/public/:token', publicPassLookupLimit, async (req, res, next)
     const legacyPassId = reference ? null : passIdFromToken(scanned, signingSecret())
     if (!reference && !legacyPassId) return res.status(404).json({ error: 'This visitor pass could not be found' })
     const [rows] = await pool.query<any[]>(`SELECT q.id,q.token_hash,q.revoked_at,
-      r.status registrationStatus,r.pass_tier passTier,r.quantity,r.preferred_visit_day preferredVisitDay,
-      r.payment_status paymentStatus,r.pass_code passCode,e.title eventTitle,e.city,e.state,e.venue,e.starts_at startsAt,e.ends_at endsAt,
-      (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver,
-      v.full_name visitorName,c.checked_in_at checkedInAt
+      r.status registrationStatus,r.payment_status paymentStatus,
+      e.title eventTitle,e.city,e.venue,e.starts_at startsAt,e.ends_at endsAt,
+      (EXISTS(SELECT 1 FROM check_ins c WHERE c.pass_id=q.id)) checkedIn,
+      (NOW()<DATE(e.starts_at)) notStarted,(NOW()>=DATE_ADD(DATE(e.ends_at),INTERVAL 1 DAY)) dayOver
       FROM qr_passes q JOIN event_registrations r ON r.id=q.registration_id
-      JOIN events e ON e.id=r.event_id JOIN visitor_profiles v ON v.id=r.visitor_id
-      LEFT JOIN check_ins c ON c.pass_id=q.id WHERE ${reference ? 'q.reference_code=?' : 'q.id=?'} LIMIT 1`, [reference ?? legacyPassId])
+      JOIN events e ON e.id=r.event_id
+      WHERE ${reference ? 'q.reference_code=?' : 'q.id=?'} LIMIT 1`, [reference ?? legacyPassId])
     const pass = rows[0]
     if (!pass || (!reference && pass.token_hash !== hashPassToken(scanned))) {
       return res.status(404).json({ error: 'This visitor pass could not be found' })
     }
-    const status = pass.revoked_at
-      ? 'Revoked'
-      : pass.registrationStatus !== 'REGISTERED'
-        ? 'Cancelled'
-        : pass.paymentStatus === 'PENDING'
-          ? 'Payment pending'
-        : pass.checkedInAt
-          ? 'Used'
-          : pass.dayOver
-            ? 'Expired'
-            : pass.notStarted
-              ? 'Not active yet'
-              : 'Valid'
-    res.json({
-      attendee: pass.visitorName,
-      event: pass.eventTitle,
+    res.json(publicPassView({
+      eventTitle: pass.eventTitle,
       city: pass.city,
-      state: pass.state,
       venue: pass.venue,
       startsAt: pass.startsAt,
       endsAt: pass.endsAt,
-      passId: pass.passCode,
-      passTier: pass.passTier,
-      quantity: pass.quantity,
-      preferredVisitDay: pass.preferredVisitDay,
+      revokedAt: pass.revoked_at,
+      registrationStatus: pass.registrationStatus,
       paymentStatus: pass.paymentStatus,
-      status,
-      checkedInAt: pass.checkedInAt,
-    })
+      checkedIn: pass.checkedIn,
+      notStarted: pass.notStarted,
+      dayOver: pass.dayOver,
+    }))
   } catch (error) {
     next(error)
   }

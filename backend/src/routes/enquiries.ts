@@ -1,10 +1,11 @@
 import crypto from 'node:crypto'
 import { raw, Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
 import { pool } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
 import { hasValidMediaSignature } from '../services/media-validation.js'
+import { hasValidWhatsAppContact, leadAttributionSchema } from '../services/lead-validation.js'
 import { queueEmail } from '../services/mailer.js'
 import { recordAudit } from '../services/audit.js'
 
@@ -43,6 +44,10 @@ const submitSchema = z.object({
   subject: z.string().trim().min(3).max(200),
   message: z.string().trim().min(10).max(5000),
   consent: z.literal(true, { error: 'Please accept the privacy notice before sending your message.' }),
+}).extend(leadAttributionSchema.shape).strict().superRefine((input, ctx) => {
+  if (!hasValidWhatsAppContact(input.phone, input.marketingWhatsAppConsent)) {
+    ctx.addIssue({ code: 'custom', path: ['marketingWhatsAppConsent'], message: 'A valid mobile number is required for WhatsApp updates.' })
+  }
 })
 
 async function notifyAdmins(refCode: string, input: { name: string; email: string; category: string; subject: string }) {
@@ -53,22 +58,85 @@ async function notifyAdmins(refCode: string, input: { name: string; email: strin
   for (const row of rows) await queueEmail(row.email, `New contact enquiry — ${refCode}`, body).catch(() => undefined)
 }
 
-export async function insertEnquiry(input: { name: string; email: string; phone?: string; category?: string; subject: string; message: string }) {
+type EnquiryInput = {
+  name: string
+  email: string
+  phone?: string
+  category?: string
+  subject: string
+  message: string
+  source?: string
+  medium?: string | null
+  campaign?: string | null
+  marketingEmailConsent?: boolean
+  marketingWhatsAppConsent?: boolean
+}
+
+async function subscribeEnquiryEmail(connection: Awaited<ReturnType<typeof pool.getConnection>>, email: string) {
+  await connection.query(
+    `INSERT INTO newsletter_subscribers(id,email) VALUES (?,?)
+     ON DUPLICATE KEY UPDATE
+       subscribed_at=IF(unsubscribed_at IS NULL,subscribed_at,NOW()),
+       unsubscribed_at=NULL`,
+    [crypto.randomUUID(), email],
+  )
+}
+
+async function saveDuplicateMarketingConsent(enquiryId: string, input: EnquiryInput) {
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    await connection.query(
+      `UPDATE contact_enquiries
+       SET email_marketing_consent=IF(?=1,1,email_marketing_consent),
+           whatsapp_marketing_consent=IF(?=1,1,whatsapp_marketing_consent)
+       WHERE id=?`,
+      [input.marketingEmailConsent ? 1 : 0, input.marketingWhatsAppConsent ? 1 : 0, enquiryId],
+    )
+    if (input.marketingEmailConsent) await subscribeEnquiryEmail(connection, input.email)
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+export async function insertEnquiry(input: EnquiryInput) {
+  const connection = await pool.getConnection()
   const id = crypto.randomUUID()
   let refCode = newRefCode()
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      await pool.query(
-        "INSERT INTO contact_enquiries(id,ref_code,name,email,phone,category,subject,message,status,priority) VALUES (?,?,?,?,?,?,?,?,'NEW','NORMAL')",
-        [id, refCode, input.name, input.email, input.phone ?? '', input.category ?? 'General', input.subject, input.message])
-      break
-    } catch (error) {
-      if (attempt >= 4 || (error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error
-      refCode = newRefCode()
+  try {
+    await connection.beginTransaction()
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await connection.query(
+          `INSERT INTO contact_enquiries
+           (id,ref_code,name,email,phone,category,subject,message,status,priority,source,medium,campaign,email_marketing_consent,whatsapp_marketing_consent)
+           VALUES (?,?,?,?,?,?,?,?,'NEW','NORMAL',?,?,?,?,?)`,
+          [
+            id, refCode, input.name, input.email, input.phone ?? '', input.category ?? 'General', input.subject, input.message,
+            input.source ?? 'direct', input.medium ?? null, input.campaign ?? null,
+            input.marketingEmailConsent ? 1 : 0, input.marketingWhatsAppConsent ? 1 : 0,
+          ],
+        )
+        break
+      } catch (error) {
+        if (attempt >= 4 || (error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error
+        refCode = newRefCode()
+      }
     }
+    await connection.query("INSERT INTO enquiry_messages(id,enquiry_id,direction,body) VALUES (?,?, 'INCOMING', ?)", [crypto.randomUUID(), id, input.message])
+    if (input.marketingEmailConsent) await subscribeEnquiryEmail(connection, input.email)
+    await connection.commit()
+    return { id, refCode }
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
   }
-  await pool.query("INSERT INTO enquiry_messages(id,enquiry_id,direction,body) VALUES (?,?, 'INCOMING', ?)", [crypto.randomUUID(), id, input.message])
-  return { id, refCode }
 }
 
 export async function notifyEnquiryCreation(refCode: string, input: { name: string; email: string; category?: string; subject: string }) {
@@ -87,9 +155,12 @@ enquiriesRouter.post('/', submitLimit, async (req, res, next) => {
 
     // Duplicate protection: the same person sending the same subject minutes apart reuses their enquiry.
     const [duplicates] = await pool.query<any[]>(
-      "SELECT ref_code refCode FROM contact_enquiries WHERE email=? AND subject=? AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE) LIMIT 1",
+      "SELECT id,ref_code refCode FROM contact_enquiries WHERE email=? AND subject=? AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE) LIMIT 1",
       [input.email, input.subject])
-    if (duplicates[0]) return res.status(200).json({ ok: true, duplicate: true, refCode: duplicates[0].refCode })
+    if (duplicates[0]) {
+      await saveDuplicateMarketingConsent(duplicates[0].id, input)
+      return res.status(200).json({ ok: true, duplicate: true, refCode: duplicates[0].refCode })
+    }
 
     const { id, refCode } = await insertEnquiry(input)
     notifyEnquiryCreation(refCode, input)
@@ -134,10 +205,12 @@ enquiriesRouter.get('/export.csv', ...adminOnly, async (req: AuthRequest, res, n
   try {
     const [rows] = await pool.query<any[]>(`
       SELECT e.ref_code refCode, e.name, e.email, e.phone, e.category, e.subject, e.message, e.status, e.priority,
+             e.source, e.medium, e.campaign, e.email_marketing_consent emailMarketingConsent,
+             e.whatsapp_marketing_consent whatsappMarketingConsent,
              a.full_name assignedTo, e.follow_up_at followUpAt, e.created_at createdAt, e.updated_at updatedAt
       FROM contact_enquiries e LEFT JOIN users a ON a.id=e.assigned_to
       ORDER BY e.created_at DESC LIMIT 5000`)
-    const columns = ['refCode', 'name', 'email', 'phone', 'category', 'subject', 'message', 'status', 'priority', 'assignedTo', 'followUpAt', 'createdAt', 'updatedAt']
+    const columns = ['refCode', 'name', 'email', 'phone', 'category', 'subject', 'message', 'status', 'priority', 'source', 'medium', 'campaign', 'emailMarketingConsent', 'whatsappMarketingConsent', 'assignedTo', 'followUpAt', 'createdAt', 'updatedAt']
     const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
     const csv = [columns.join(','), ...rows.map((row: any) => columns.map((key) => escape(row[key])).join(','))].join('\r\n')
     await recordAudit(req.user!.id, 'enquiries.export', 'contact_enquiry', null, { rows: rows.length })
@@ -186,6 +259,8 @@ enquiriesRouter.get('/', ...adminOnly, async (req: AuthRequest, res, next) => {
 
     const [rows] = await pool.query<any[]>(
       `SELECT e.id, e.ref_code refCode, e.name, e.email, e.phone, e.category, e.subject, e.status, e.priority,
+              e.source, e.medium, e.campaign, e.email_marketing_consent emailMarketingConsent,
+              e.whatsapp_marketing_consent whatsappMarketingConsent,
               e.assigned_to assignedTo, a.full_name assignedToName, e.follow_up_at followUpAt, e.resolved_at resolvedAt,
               e.created_at createdAt, e.updated_at updatedAt,
               (SELECT COUNT(*) FROM enquiry_attachments t WHERE t.enquiry_id=e.id) attachmentCount
@@ -226,6 +301,8 @@ enquiriesRouter.get('/:id', ...adminOnly, async (req, res, next) => {
     if (!isUuid.test(String(req.params.id))) return res.status(404).json({ error: 'Enquiry not found' })
     const [rows] = await pool.query<any[]>(`
       SELECT e.id, e.ref_code refCode, e.name, e.email, e.phone, e.category, e.subject, e.message, e.status, e.priority,
+             e.source, e.medium, e.campaign, e.email_marketing_consent emailMarketingConsent,
+             e.whatsapp_marketing_consent whatsappMarketingConsent,
              e.assigned_to assignedTo, a.full_name assignedToName, e.follow_up_at followUpAt, e.resolved_at resolvedAt,
              e.created_at createdAt, e.updated_at updatedAt
       FROM contact_enquiries e LEFT JOIN users a ON a.id=e.assigned_to WHERE e.id=?`, [req.params.id])
@@ -251,11 +328,13 @@ enquiriesRouter.patch('/:id', ...adminOnly, async (req: AuthRequest, res, next) 
       assignedTo: z.string().trim().regex(/^[0-9a-f-]{36}$/).nullable().optional(),
       followUpAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/).nullable().optional(),
       resolutionNote: z.string().trim().max(2000).optional(),
+      emailMarketingConsent: z.literal(false).optional(),
+      whatsappMarketingConsent: z.literal(false).optional(),
     }).superRefine((value, ctx) => {
       if (Object.keys(value).length === 0) ctx.addIssue({ code: 'custom', message: 'Nothing to update' })
     }).parse(req.body)
 
-    const [existing] = await pool.query<any[]>('SELECT id, status, assigned_to assignedTo, ref_code refCode FROM contact_enquiries WHERE id=?', [req.params.id])
+    const [existing] = await pool.query<any[]>('SELECT id, status, email, phone, assigned_to assignedTo, ref_code refCode FROM contact_enquiries WHERE id=?', [req.params.id])
     if (!existing.length) return res.status(404).json({ error: 'Enquiry not found' })
     const current = existing[0]
 
@@ -275,10 +354,19 @@ enquiriesRouter.patch('/:id', ...adminOnly, async (req: AuthRequest, res, next) 
     if (input.priority) { sets.push('priority=?'); args.push(input.priority) }
     if (input.assignedTo !== undefined) { sets.push('assigned_to=?'); args.push(input.assignedTo) }
     if (input.followUpAt !== undefined) { sets.push('follow_up_at=?'); args.push(input.followUpAt ? `${input.followUpAt}:00`.slice(0, 19).replace('T', ' ') : null) }
+    if (input.emailMarketingConsent === false) sets.push('email_marketing_consent=FALSE')
+    if (input.whatsappMarketingConsent === false) sets.push('whatsapp_marketing_consent=FALSE')
     if (input.status === 'RESOLVED') { sets.push('resolved_at=NOW()') }
     if (input.status && input.status !== 'RESOLVED') { sets.push('resolved_at=NULL') }
     args.push(req.params.id)
     await pool.query(`UPDATE contact_enquiries SET ${sets.join(', ')} WHERE id=?`, args)
+    if (input.emailMarketingConsent === false) {
+      await pool.query('UPDATE contact_enquiries SET email_marketing_consent=FALSE WHERE email=?', [current.email])
+      await pool.query('UPDATE newsletter_subscribers SET unsubscribed_at=NOW() WHERE email=? AND unsubscribed_at IS NULL', [current.email])
+    }
+    if (input.whatsappMarketingConsent === false && current.phone) {
+      await pool.query('UPDATE contact_enquiries SET whatsapp_marketing_consent=FALSE WHERE phone=?', [current.phone])
+    }
 
     const log: string[] = []
     if (input.status && input.status !== current.status) log.push(`Status set to ${input.status}`)

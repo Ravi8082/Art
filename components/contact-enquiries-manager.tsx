@@ -11,6 +11,7 @@ const categories = ['General', 'Exhibition/Stall Booking', 'Artist', 'Partnershi
 
 type Enquiry = {
   id: string; refCode: string; name: string; email: string; phone: string; category: string; subject: string
+  source: string; medium: string | null; campaign: string | null; emailMarketingConsent: boolean; whatsappMarketingConsent: boolean
   status: typeof statuses[number]; priority: typeof priorities[number]; assignedTo: string | null; assignedToName: string | null
   followUpAt: string | null; resolvedAt: string | null; createdAt: string; updatedAt: string; attachmentCount: number; overdue?: boolean
 }
@@ -156,6 +157,19 @@ export function ContactEnquiriesManager() {
     }, 'Reply emailed and logged.')
   }
 
+  function revokeMarketingConsent(channel: 'email' | 'whatsapp') {
+    if (!selected) return
+    void run(async () => {
+      await api(`/api/enquiries/${selected}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(channel === 'email'
+          ? { emailMarketingConsent: false }
+          : { whatsappMarketingConsent: false }),
+      })
+    }, `${channel === 'email' ? 'Email' : 'WhatsApp'} marketing consent revoked.`)
+  }
+
   if (checked && !signedIn) {
     return (
       <main className="event-admin">
@@ -217,13 +231,13 @@ export function ContactEnquiriesManager() {
       <section className="event-form">
         <h2>Enquiries <small>{total} total</small></h2>
         <table className="apm-table ce-table">
-          <thead><tr><th>Reference</th><th>From</th><th>Category</th><th>Subject</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Follow-up</th></tr></thead>
+          <thead><tr><th>Reference</th><th>From</th><th>Category / source</th><th>Subject</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Follow-up</th></tr></thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} className={selected === row.id ? 'is-active' : ''} onClick={() => setSelected(row.id)}>
                 <td><button type="button" className="ce-ref">{row.refCode}</button></td>
                 <td><strong>{row.name}</strong><small>{row.email}</small></td>
-                <td>{row.category}</td>
+                <td>{row.category}<small>{[row.source, row.medium, row.campaign].filter(Boolean).join(' · ')}</small></td>
                 <td className="ce-subject">{row.subject}</td>
                 <td><span className={`ce-pill ce-${row.status.toLowerCase()}`}>{row.status}</span></td>
                 <td>{row.priority}</td>
@@ -250,8 +264,24 @@ export function ContactEnquiriesManager() {
               <ul className="ce-person">
                 <li><strong>{detail.enquiry.name}</strong> · {detail.enquiry.email}{detail.enquiry.phone ? ` · ${detail.enquiry.phone}` : ''}</li>
                 <li>Category: {detail.enquiry.category} · Received {when(detail.enquiry.createdAt)}</li>
+                <li>Campaign source: {[detail.enquiry.source, detail.enquiry.medium, detail.enquiry.campaign].filter(Boolean).join(' · ')}</li>
+                <li>Email updates: {detail.enquiry.emailMarketingConsent ? 'Opted in (newsletter updates)' : 'Not opted in'} · WhatsApp updates: {detail.enquiry.whatsappMarketingConsent ? 'Opted in' : 'Not opted in'}</li>
                 {detail.enquiry.resolvedAt && <li>Resolved {when(detail.enquiry.resolvedAt)}</li>}
               </ul>
+              {(detail.enquiry.emailMarketingConsent || detail.enquiry.whatsappMarketingConsent) && (
+                <div className="apm-header-actions">
+                  {detail.enquiry.emailMarketingConsent && <button type="button" className="apm-secondary" disabled={busy} onClick={() => revokeMarketingConsent('email')}>Revoke email updates</button>}
+                  {detail.enquiry.whatsappMarketingConsent && <button type="button" className="apm-secondary" disabled={busy} onClick={() => revokeMarketingConsent('whatsapp')}>Revoke WhatsApp updates</button>}
+                </div>
+              )}
+              {detail.enquiry.whatsappMarketingConsent && detail.enquiry.phone && (
+                <a
+                  className="apm-secondary"
+                  href={`https://wa.me/${detail.enquiry.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${detail.enquiry.name}, following up on your enquiry ${detail.enquiry.refCode} to The Haat of Art.`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >Open opted-in WhatsApp follow-up</a>
+              )}
               <p className="apm-label">Message</p>
               <p className="ce-message">{detail.enquiry.message}</p>
               <p className="apm-label">Attachments</p>

@@ -93,7 +93,7 @@ export function resolveIndoreView(event: LiveEvent | null): IndoreView | null {
       timing,
       badge: 'Visitor Registration',
       heroImage: '/media/hero-exhibition.jpg',
-      ctas: { stall: { label: 'Book Your Stall', href: '/exhibit-with-us' }, visitor: { label: 'Visitor Registration', href: '#register' } },
+      ctas: { stall: { label: 'Book Your Stall', href: '/exhibitions' }, visitor: { label: 'Visitor Registration', href: '#register' } },
     },
     info: {
       venue: {

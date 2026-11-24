@@ -1250,7 +1250,7 @@ function SuperAdminOverview({
         <div className="role-panel role-super-events">
           <div className="role-panel-heading">
             <div><p className="role-eyebrow">Exhibition performance</p><h2>Events &amp; registrations</h2></div>
-            <Link href="/dashboard/events" className="role-panel-link" aria-label="Manage exhibitions"><ArrowRight size={14} /></Link>
+            <Link href="/dashboard/events" className="role-panel-link">View exhibitions <ArrowRight size={14} /></Link>
           </div>
           {reports
             ? reports.events.length
@@ -1264,12 +1264,13 @@ function SuperAdminOverview({
               : <p className="role-empty">No exhibition records are available yet.</p>
             : <p className="role-empty">{extraErrors.find((item) => item.startsWith('Reports')) ?? 'Loading exhibition data…'}</p>}
         </div>
-        <div className="role-panel role-super-actions">
-          <div className="role-panel-heading"><div><p className="role-eyebrow">Workspace</p><h2>Quick actions</h2></div><ArrowRight size={16} /></div>
-          <div className="role-action-list">{actions.SUPER_ADMIN.map(({ label, href, icon: Icon, tone }) => (
-            <Link key={label} href={href} className={`role-action ${tone}`}><Icon size={16} /><span>{label}</span><ArrowRight size={13} /></Link>
-          ))}</div>
-        </div>
+      </section>
+
+      <section className="role-panel role-super-actions">
+        <div className="role-panel-heading"><div><p className="role-eyebrow">Workspace</p><h2>Quick actions</h2></div><ArrowRight size={16} /></div>
+        <div className="role-action-list">{actions.SUPER_ADMIN.map(({ label, href, icon: Icon, tone }) => (
+          <Link key={label} href={href} className={`role-action ${tone}`}><Icon size={16} /><span>{label}</span><ArrowRight size={13} /></Link>
+        ))}</div>
       </section>
 
       <section className="role-super-admin-records">
@@ -1312,28 +1313,40 @@ function SuperAdminOverview({
 function RevenueChart({ rows }: { rows: DashboardReports['monthlyRevenue'] }) {
   if (!rows.length) return <p className="role-empty">No invoice revenue has been recorded in the reporting period.</p>
   const maximum = Math.max(1, ...rows.map((row) => Number(row.revenue) || 0))
+  const latest = rows[rows.length - 1]
+  const latestDate = new Date(`${latest.month}-01T12:00:00`)
+  const latestMonth = Number.isNaN(latestDate.getTime())
+    ? latest.month
+    : new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(latestDate)
+  const latestRevenue = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(latest.revenue) || 0)
   return (
-    <div className="role-revenue-chart" role="img" aria-label="Monthly invoice revenue chart">
-      <div className="role-revenue-chart-bars">
-        {rows.map((row) => {
-          const amount = Number(row.revenue) || 0
-          const height = Math.max(3, Math.round((amount / maximum) * 100))
-          const monthDate = new Date(`${row.month}-01T12:00:00`)
-          const month = Number.isNaN(monthDate.getTime())
-            ? row.month
-            : new Intl.DateTimeFormat('en-IN', { month: 'short' }).format(monthDate)
-          const revenue = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount)
-          return (
-            <div className="role-revenue-column" key={row.month} title={`${month}: ${revenue} · ${row.invoices} invoices`}>
-              <strong>{amount ? revenue : '₹0'}</strong>
-              <div className="role-revenue-track"><i style={{ height: `${height}%` }} /></div>
-              <small>{month}</small>
-            </div>
-          )
-        })}
+    <>
+      <div className="role-revenue-summary">
+        <strong>{latestRevenue}</strong>
+        <span>{latestMonth} revenue</span>
       </div>
-      <div className="role-revenue-legend"><span><i /> Invoice revenue</span><span>Reported months</span></div>
-    </div>
+      <div className="role-revenue-chart" role="img" aria-label="Monthly invoice revenue chart">
+        <div className="role-revenue-chart-bars">
+          {rows.map((row) => {
+            const amount = Number(row.revenue) || 0
+            const height = Math.max(3, Math.round((amount / maximum) * 100))
+            const monthDate = new Date(`${row.month}-01T12:00:00`)
+            const month = Number.isNaN(monthDate.getTime())
+              ? row.month
+              : new Intl.DateTimeFormat('en-IN', { month: 'short' }).format(monthDate)
+            const revenue = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount)
+            return (
+              <div className="role-revenue-column" key={row.month} title={`${month}: ${revenue} · ${row.invoices} invoices`}>
+                <strong>{amount ? revenue : '₹0'}</strong>
+                <div className="role-revenue-track"><i style={{ height: `${height}%` }} /></div>
+                <small>{month}</small>
+              </div>
+            )
+          })}
+        </div>
+        <div className="role-revenue-legend"><span><i /> Invoice revenue</span><span>Reported months</span></div>
+      </div>
+    </>
   )
 }
 

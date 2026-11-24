@@ -9,13 +9,22 @@ import {
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
-type Mode = 'reports' | 'audit' | 'system'
+type Mode = 'reports' | 'analytics' | 'audit' | 'system'
 type ReportData = {
   generatedAt: string
   summary: Record<string, number>
   monthlyRevenue: { month: string; invoices: number; revenue: number | string }[]
   events: { id: string; title: string; city: string; status: string; startsAt: string; applications: number; confirmedBookings: number; revenue: number | string; visitorRegistrations: number }[]
   paymentsByStatus: { status: string; total: number }[]
+}
+type AnalyticsData = {
+  generatedAt: string
+  summary: { pageViews: number; uniqueVisitors: number; linkClicks: number; formSubmissions: number; contactLeads: number }
+  sources: { source: string; medium: string | null; campaign: string | null; visits: number }[]
+  pages: { pagePath: string; views: number }[]
+  actions: { eventType: string; total: number }[]
+  recentEvents: { visitorId: string; eventType: string; pagePath: string; targetPath: string | null; source: string; createdAt: string }[]
+  leadSources: { source: string; medium: string | null; campaign: string | null; leads: number; emailOptIns: number; whatsappOptIns: number }[]
 }
 type AuditEntry = { id: number; action: string; entityType: string; entityId: string | null; metadata: Record<string, unknown> | null; createdAt: string; actorName: string | null; actorEmail: string | null }
 type AuditData = { entries: AuditEntry[]; page: number; limit: number; total: number }
@@ -48,6 +57,7 @@ const titleCase = (value: string) => value.toLowerCase().replaceAll('_', ' ').re
 
 export function DashboardInsights({ mode }: { mode: Mode }) {
   const [reports, setReports] = useState<ReportData | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [audit, setAudit] = useState<AuditData | null>(null)
   const [system, setSystem] = useState<SystemData | null>(null)
   const [query, setQuery] = useState('')
@@ -61,6 +71,7 @@ export function DashboardInsights({ mode }: { mode: Mode }) {
     setError('')
     try {
       if (mode === 'reports') setReports(await getJson<ReportData>('/api/dashboard/reports'))
+      if (mode === 'analytics') setAnalytics(await getJson<AnalyticsData>('/api/dashboard/analytics'))
       if (mode === 'system') setSystem(await getJson<SystemData>('/api/dashboard/system'))
       if (mode === 'audit') {
         const params = new URLSearchParams({ page: String(page), limit: '30', q: submittedQuery })
@@ -101,7 +112,9 @@ export function DashboardInsights({ mode }: { mode: Mode }) {
 
   const heading = mode === 'reports'
     ? { eyebrow: 'Operations & finance', title: 'Reports & Analytics', description: 'Live overview of users, exhibitions, applications, bookings, payments and visitor activity.' }
-    : mode === 'audit'
+    : mode === 'analytics'
+      ? { eyebrow: 'Privacy-respecting web insights', title: 'Website Visitor Analytics', description: 'Opted-in traffic, campaign sources and contact enquiries. Data covers the last 30 days.' }
+      : mode === 'audit'
       ? { eyebrow: 'Platform security', title: 'Audit Log', description: 'Trace administrative actions and platform changes, with actor and event metadata.' }
       : { eyebrow: 'Platform administration', title: 'System & Security', description: 'Review database availability, essential security configuration, account health and delivery queues.' }
 
@@ -115,15 +128,16 @@ export function DashboardInsights({ mode }: { mode: Mode }) {
       <div className="role-access-content insights-content">
         <div className="role-access-title"><span className="role-access-icon">{mode === 'system' ? <Database size={22} /> : mode === 'audit' ? <ShieldCheck size={22} /> : <Activity size={22} />}</span><div><p className="role-eyebrow">{heading.eyebrow}</p><h1>{heading.title}</h1><p>{heading.description}</p></div></div>
         <div className="insights-toolbar">
-          <span>{loading ? 'Refreshing data…' : mode === 'reports' && reports ? `Updated ${dateTime(reports.generatedAt)}` : mode === 'system' && system ? `Checked ${dateTime(system.checkedAt)}` : 'Live dashboard data'}</span>
+          <span>{loading ? 'Refreshing data…' : mode === 'reports' && reports ? `Updated ${dateTime(reports.generatedAt)}` : mode === 'analytics' && analytics ? `Updated ${dateTime(analytics.generatedAt)}` : mode === 'system' && system ? `Checked ${dateTime(system.checkedAt)}` : 'Live dashboard data'}</span>
           <div>
             {mode === 'reports' && <button type="button" className="role-edit-button" onClick={downloadReport} disabled={!reports}><ArrowDownToLine size={14} /> Export CSV</button>}
             <button type="button" className="role-edit-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Refresh</button>
           </div>
         </div>
         {error && <p className="role-error insights-error" role="alert"><CircleAlert size={15} /> {error}</p>}
-        {loading && !reports && !audit && !system ? <p className="role-access-empty">Loading secure dashboard data…</p> : null}
+        {loading && !reports && !analytics && !audit && !system ? <p className="role-access-empty">Loading secure dashboard data…</p> : null}
         {mode === 'reports' && reports && <ReportsView data={reports} />}
+        {mode === 'analytics' && analytics && <AnalyticsView data={analytics} />}
         {mode === 'audit' && audit && <AuditView data={audit} query={query} setQuery={setQuery} onSearch={searchAudit} page={page} setPage={setPage} />}
         {mode === 'system' && system && <SystemView data={system} />}
       </div>
@@ -152,10 +166,56 @@ function ReportsView({ data }: { data: ReportData }) {
         <Link className="insights-inline-link" href="/dashboard/finance">Open payment reconciliation <span>→</span></Link>
       </article>
     </section>
+    <section className="insights-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Website traffic</p><h2>Anonymous visitor journeys</h2></div><Link className="insights-inline-link" href="/dashboard/analytics">Open website analytics <span>→</span></Link></div><p>Only visitors who allow analytics are included. No raw IP addresses or form values are stored.</p></section>
     <section className="insights-card insights-table-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Performance</p><h2>Exhibition overview</h2></div><span>{data.events.length} exhibitions</span></div>
       <div className="role-access-table-wrap"><table className="role-access-table insights-table"><thead><tr><th>Exhibition</th><th>Status</th><th>Applications</th><th>Stall bookings</th><th>Revenue</th><th>Visitors</th></tr></thead><tbody>
         {data.events.map((event) => <tr key={event.id}><td><strong>{event.title}</strong><small>{[event.city, dateOnly(event.startsAt)].filter(Boolean).join(' · ')}</small></td><td><span className="role-account-status">{titleCase(event.status)}</span></td><td>{event.applications}</td><td>{event.confirmedBookings}</td><td>{money(event.revenue)}</td><td>{event.visitorRegistrations}</td></tr>)}
         {!data.events.length && <tr><td colSpan={6} className="role-access-empty">No exhibitions in the system yet.</td></tr>}
+      </tbody></table></div>
+    </section>
+  </>
+}
+
+function AnalyticsView({ data }: { data: AnalyticsData }) {
+  const metrics = [
+    ['Page views', data.summary.pageViews],
+    ['Unique browsers', data.summary.uniqueVisitors],
+    ['Link clicks', data.summary.linkClicks],
+    ['Contact leads', data.summary.contactLeads],
+  ] as const
+  return <>
+    <section className="insights-kpis">
+      {metrics.map(([label, total], index) => <article className="insights-kpi" key={label}><span className={`insights-kpi-mark ${['blue', 'green', 'orange', 'purple'][index]}`} /><small>{label}</small><strong>{total}</strong></article>)}
+    </section>
+    <p className="analytics-privacy-note">Browser IDs are pseudonymous and are not linked to account, email, phone or IP data. Raw URLs and form contents are not collected.</p>
+    <section className="insights-grid">
+      <article className="insights-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Acquisition</p><h2>Where visitors came from</h2></div><span>Last 30 days</span></div>
+        {data.sources.length ? data.sources.map((row) => <div className="insights-status-row" key={`${row.source}-${row.medium}-${row.campaign}`}><span>{titleCase(row.source)} · {titleCase(row.medium ?? 'other')}<small>{titleCase(row.campaign ?? 'other')}</small></span><strong>{row.visits}</strong></div>) : <p className="role-access-empty">No opted-in visits recorded yet.</p>}
+      </article>
+      <article className="insights-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Content</p><h2>Most visited pages</h2></div></div>
+        {data.pages.length ? data.pages.map((row) => <div className="insights-status-row" key={row.pagePath}><span>{row.pagePath}</span><strong>{row.views}</strong></div>) : <p className="role-access-empty">No page views recorded yet.</p>}
+      </article>
+    </section>
+    <section className="insights-grid">
+      <article className="insights-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Engagement</p><h2>Recorded actions</h2></div></div>
+        {data.actions.length ? data.actions.map((row) => <div className="insights-status-row" key={row.eventType}><span>{titleCase(row.eventType)}</span><strong>{row.total}</strong></div>) : <p className="role-access-empty">No link or form actions recorded yet.</p>}
+      </article>
+      <article className="insights-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Campaigns</p><h2>Instagram &amp; Facebook links</h2></div></div><p>Use UTM links to label campaigns, for example <code>?utm_source=instagram&amp;utm_medium=social&amp;utm_campaign=reel</code>. Facebook links work the same way with <code>utm_source=facebook</code>.</p></article>
+    </section>
+    <section className="insights-card insights-table-card">
+      <div className="insights-card-heading">
+        <div><p className="role-eyebrow">Lead generation</p><h2>Enquiries by campaign</h2></div>
+        <Link className="insights-inline-link" href="/dashboard/enquiries">Manage enquiries <span>→</span></Link>
+      </div>
+      <div className="role-access-table-wrap"><table className="role-access-table insights-table"><thead><tr><th>Source / campaign</th><th>Enquiries</th><th>Email updates</th><th>WhatsApp updates</th></tr></thead><tbody>
+        {data.leadSources.map((row, index) => <tr key={`${row.source}-${row.medium}-${row.campaign}-${index}`}><td><strong>{titleCase(row.source)}</strong><small>{[row.medium, row.campaign].filter(Boolean).map((value) => titleCase(value!)).join(' · ') || 'No campaign label'}</small></td><td>{row.leads}</td><td>{row.emailOptIns}</td><td>{row.whatsappOptIns}</td></tr>)}
+        {!data.leadSources.length && <tr><td colSpan={4} className="role-access-empty">No contact enquiries recorded in the last 30 days.</td></tr>}
+      </tbody></table></div>
+    </section>
+    <section className="insights-card insights-table-card"><div className="insights-card-heading"><div><p className="role-eyebrow">Recent activity</p><h2>Latest visitor events</h2></div><span>Up to 100</span></div>
+      <div className="role-access-table-wrap"><table className="role-access-table insights-table"><thead><tr><th>Browser</th><th>Action</th><th>Page</th><th>Clicked destination</th><th>Source</th><th>When</th></tr></thead><tbody>
+        {data.recentEvents.map((event, index) => <tr key={`${event.visitorId}-${event.createdAt}-${index}`}><td><code>{event.visitorId}</code></td><td>{titleCase(event.eventType)}</td><td>{event.pagePath}</td><td>{event.targetPath || '—'}</td><td>{titleCase(event.source)}</td><td>{dateTime(event.createdAt)}</td></tr>)}
+        {!data.recentEvents.length && <tr><td colSpan={6} className="role-access-empty">No opted-in visitor activity recorded yet.</td></tr>}
       </tbody></table></div>
     </section>
   </>

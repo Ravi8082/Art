@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import multer from 'multer'
@@ -317,6 +317,69 @@ dashboardRouter.post('/staff', requireAuth, requirePermission('roles:manage'), a
     })
     if (!result) return res.status(409).json({ error: 'An account already uses this email address' })
     res.status(201).json({ userId, email: input.email, ...result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+dashboardRouter.get('/analytics', requireAuth, requirePermission('reports:read'), async (_req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store')
+    const [summaryResult, sourcesResult, pagesResult, actionsResult, recentResult, leadSourcesResult, leadTotalsResult] = await Promise.all([
+      pool.query<any[]>(`SELECT
+        COUNT(CASE WHEN event_type='PAGE_VIEW' THEN 1 END) pageViews,
+        COUNT(DISTINCT visitor_id) uniqueVisitors,
+        COUNT(CASE WHEN event_type='LINK_CLICK' THEN 1 END) linkClicks,
+        COUNT(CASE WHEN event_type='FORM_SUBMIT' THEN 1 END) formSubmissions
+        FROM site_analytics_events WHERE created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)`),
+      pool.query<any[]>(`SELECT source,medium,campaign,COUNT(*) visits
+        FROM site_analytics_events
+        WHERE event_type='PAGE_VIEW' AND created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+        GROUP BY source,medium,campaign ORDER BY visits DESC LIMIT 20`),
+      pool.query<any[]>(`SELECT page_path pagePath,COUNT(*) views
+        FROM site_analytics_events
+        WHERE event_type='PAGE_VIEW' AND created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+        GROUP BY page_path ORDER BY views DESC LIMIT 20`),
+      pool.query<any[]>(`SELECT event_type eventType,COUNT(*) total
+        FROM site_analytics_events
+        WHERE event_type<>'PAGE_VIEW' AND created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+        GROUP BY event_type ORDER BY total DESC`),
+      pool.query<any[]>(`SELECT LEFT(SHA2(visitor_id,256),10) visitorId,event_type eventType,page_path pagePath,
+          target_path targetPath,source,created_at createdAt
+        FROM site_analytics_events
+        WHERE created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)
+        ORDER BY created_at DESC,id DESC LIMIT 100`),
+      pool.query<any[]>(`SELECT source,medium,campaign,COUNT(*) leads,
+          SUM(email_marketing_consent=1) emailOptIns,
+          SUM(whatsapp_marketing_consent=1) whatsappOptIns
+        FROM contact_enquiries
+        WHERE created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) AND status<>'SPAM'
+        GROUP BY source,medium,campaign ORDER BY leads DESC LIMIT 30`),
+      pool.query<any[]>(`SELECT COUNT(*) contactLeads FROM contact_enquiries
+        WHERE created_at>=DATE_SUB(NOW(),INTERVAL 30 DAY) AND status<>'SPAM'`),
+    ])
+    const summary = summaryResult[0][0] ?? {}
+    const leadSources = leadSourcesResult[0].map((row: any) => ({
+      ...row,
+      leads: Number(row.leads),
+      emailOptIns: Number(row.emailOptIns),
+      whatsappOptIns: Number(row.whatsappOptIns),
+    }))
+    res.json({
+      generatedAt: new Date().toISOString(),
+      summary: {
+        pageViews: Number(summary.pageViews ?? 0),
+        uniqueVisitors: Number(summary.uniqueVisitors ?? 0),
+        linkClicks: Number(summary.linkClicks ?? 0),
+        formSubmissions: Number(summary.formSubmissions ?? 0),
+        contactLeads: Number(leadTotalsResult[0][0]?.contactLeads ?? 0),
+      },
+      sources: sourcesResult[0].map((row: any) => ({ ...row, visits: Number(row.visits) })),
+      pages: pagesResult[0].map((row: any) => ({ ...row, views: Number(row.views) })),
+      actions: actionsResult[0].map((row: any) => ({ ...row, total: Number(row.total) })),
+      recentEvents: recentResult[0],
+      leadSources,
+    })
   } catch (error) {
     next(error)
   }

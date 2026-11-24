@@ -79,12 +79,17 @@ Helper scripts (`scripts/backup-local-db.ps1`, `backend/scripts/check-db.mjs`) c
 ## Production, security and scale (200k+ visitors/day)
 
 - `NODE_ENV=production` refuses to start unless `COOKIE_SECRET` and `JWT_SECRET` are strong (32+ characters).
+- Apply database migrations after deployment; password changes, resets, staff resets, and session revocation invalidate existing sessions.
 - `TRUST_PROXY=<hops>` (e.g. `1`) must be set behind a load balancer/CDN so rate limits use the real client IP.
-- `RATE_LIMIT_PER_MINUTE` (default 600 per IP), `DB_POOL_SIZE` (default 30), `DB_QUEUE_LIMIT` (default 2000).
+- Global API limits are 120 read-only requests/minute per IP (300 per verified user) and 20 writes/minute per IP (100 per verified user); sensitive routes also have dedicated limits. Production uses Redis for shared counters.
+- `DB_POOL_SIZE` (default 30), `DB_QUEUE_LIMIT` (default 2000).
+- First-party analytics is off until consent and records pseudonymous browser IDs, public paths and basic actions; it never stores raw IP addresses or form values, and events expire after 90 days. UTM source/medium/campaign are attached to a contact lead only when analytics is allowed.
+- Contact enquiries can separately opt in to email and WhatsApp updates. Email opt-ins join the existing newsletter audience, receive unsubscribe links, and follow the one-email-per-recipient-per-calendar-week cap. WhatsApp follow-up is staff-initiated only for leads who opted in; no messages are sent automatically to new enquiry leads.
+- Meta Pixel loads only after separate advertising consent and only when `NEXT_PUBLIC_META_PIXEL_ID` is configured in the frontend environment. It sends page-view and successful lead events without form values or contact details, but Meta may receive browser/network information including the visitor IP. Set up website-visitor custom audiences in Meta Business Suite; same-Wi-Fi users are not identified.
 - Announcement and newsletter emails go through the `email_outbox` table. A background worker (`OUTBOX_WORKER=off` disables it; tune `OUTBOX_BATCH_SIZE`, `OUTBOX_CONCURRENCY`) sends in batches with retries and backoff, safe with several instances. Use a transactional SMTP provider (SES, Brevo, SendGrid) with a quota that fits your audience; `SMTP_MAX_CONNECTIONS` controls the pool.
 - Public event lists are cached for 30 seconds in memory and via `Cache-Control` for CDNs.
 - Staff check-ins are limited per account (120/min), not per IP. Scans outside a staff member's assigned events/states are rejected and audit-logged.
-- Rate limiters and caches are per process. Before running multiple instances, move rate limits to a shared store (Redis) and use a managed MySQL.
+- Production rate limits are shared through Redis across backend instances; development and tests use an in-memory store. Public event-list caching is separate and remains per process.
 
 ## Verification
 

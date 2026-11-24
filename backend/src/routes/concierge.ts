@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { Router, type RequestHandler } from 'express'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'

@@ -81,7 +81,7 @@ export function AccountProfile() {
     void run(async () => {
       await api('/api/account/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') }) })
       element.reset()
-    }, 'Password updated.')
+    }, 'Password updated. Please sign in again.')
   }
 
   function upload(file: File) {

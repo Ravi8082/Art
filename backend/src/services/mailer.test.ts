@@ -64,7 +64,7 @@ test('session cookie is httpOnly, signed, host-only and secure in production', (
   assert.equal(production.httpOnly, true)
   assert.equal(production.signed, true)
   assert.equal(production.secure, true)
-  assert.equal(production.sameSite, 'lax')
+  assert.equal(production.sameSite, 'strict')
   assert.equal(production.maxAge, 15 * 60 * 1000)
   assert.equal('domain' in production, false)
   assert.equal(sessionCookieOptions({ NODE_ENV: 'development' }).secure, false)

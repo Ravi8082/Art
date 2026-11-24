@@ -1,16 +1,18 @@
 import crypto from 'node:crypto'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { queueEmail, secureToken, hashToken } from '../services/mailer.js'
-import { enqueueSubscribers, enqueueConsentedVisitors, enqueueArtists } from '../services/outbox.js'
+import { enqueueSubscribers, enqueueConsentedVisitors } from '../services/outbox.js'
 import { broadcastWhatsAppToConsentedVisitors } from '../services/whatsapp.js'
 
 export const newsletterRouter = Router()
 
 const subscribeLimit = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
 const publicUrl = (path: string) => new URL(path, process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000').toString()
+const campaignUrl = (path: string, source: string, medium: string, campaign: string) =>
+  publicUrl(`${path}?utm_source=${source}&utm_medium=${medium}&utm_campaign=${campaign}`)
 
 async function createUnsubscribeToken(subscriberId: string) {
   const token = secureToken()
@@ -64,15 +66,31 @@ newsletterRouter.post('/unsubscribe', async (req, res, next) => {
   try {
     const input = z.object({ token: z.string().min(20).max(200) }).safeParse(req.body)
     if (!input.success) return res.status(400).type('text/plain').send('Invalid unsubscribe link.')
+    const tokenHash = hashToken(input.data.token)
     const [result] = await pool.query<any>(
       `UPDATE newsletter_subscribers s
        JOIN newsletter_unsubscribe_tokens t ON t.subscriber_id=s.id
        SET s.unsubscribed_at=NOW(),t.used_at=NOW()
        WHERE t.token_hash=? AND t.used_at IS NULL AND s.unsubscribed_at IS NULL`,
-      [hashToken(input.data.token)],
+      [tokenHash],
     )
-    res.status(result.affectedRows ? 200 : 404).type('text/plain').send(
-      result.affectedRows ? 'You have been unsubscribed from The Haat of Art newsletter.' : 'This link is invalid or the subscription is already inactive.',
+    let unsubscribed = Number(result.affectedRows) > 0
+    if (unsubscribed) {
+      const [subscribers] = await pool.query<any[]>('SELECT s.email FROM newsletter_subscribers s JOIN newsletter_unsubscribe_tokens t ON t.subscriber_id=s.id WHERE t.token_hash=?', [tokenHash])
+      if (subscribers[0]) await pool.query('UPDATE contact_enquiries SET email_marketing_consent=FALSE WHERE email=?', [subscribers[0].email])
+    }
+    if (!unsubscribed) {
+      const [visitorResult] = await pool.query<any>(
+        `UPDATE visitor_profiles v
+         JOIN visitor_marketing_unsubscribe_tokens t ON t.visitor_id=v.id
+         SET v.marketing_consent=0,t.used_at=NOW()
+         WHERE t.token_hash=? AND t.used_at IS NULL AND v.marketing_consent=1`,
+        [tokenHash],
+      )
+      unsubscribed = Number(visitorResult.affectedRows) > 0
+    }
+    res.status(unsubscribed ? 200 : 404).type('text/plain').send(
+      unsubscribed ? 'You have been unsubscribed from marketing updates.' : 'This link is invalid or the subscription is already inactive.',
     )
   } catch (error) {
     next(error)
@@ -80,7 +98,7 @@ newsletterRouter.post('/unsubscribe', async (req, res, next) => {
 })
 
 export async function notifyNewsletterSubscribers(post: { id: string; title: string; excerpt: string }) {
-  const articleUrl = publicUrl(`/blog/${encodeURIComponent(post.id)}`)
+  const articleUrl = campaignUrl(`/blog/${encodeURIComponent(post.id)}`, 'newsletter', 'email', 'blog')
   const body = [
     `A new story from The Haat of Art: ${post.title}`,
     post.excerpt,
@@ -98,7 +116,8 @@ export async function announceEvent(eventId: string, { force = false } = {}) {
   if (!claim.affectedRows) return { queued: 0 }
   const [[event]] = await pool.query<any[]>(
     'SELECT slug,title,description,city,state,venue,starts_at startsAt,ends_at endsAt FROM events WHERE id=?', [eventId])
-  const registerUrl = publicUrl(`/pass/${encodeURIComponent(event.slug)}`)
+  const registerUrl = campaignUrl(`/pass/${encodeURIComponent(event.slug)}`, 'newsletter', 'email', 'exhibition')
+  const whatsappRegisterUrl = campaignUrl(`/pass/${encodeURIComponent(event.slug)}`, 'whatsapp', 'messaging', 'exhibition')
   const place = [event.venue, event.city, event.state].filter(Boolean).join(', ')
   const when = new Date(event.startsAt).toDateString() === new Date(event.endsAt).toDateString()
     ? new Date(event.startsAt).toDateString()
@@ -116,18 +135,10 @@ export async function announceEvent(eventId: string, { force = false } = {}) {
   // Emails are queued in the outbox and delivered by the background worker in rate-limited batches.
   const subscribers = await enqueueSubscribers(subject, body)
   const visitors = await enqueueConsentedVisitors(subject,
-    `${body}\n\nYou receive this because you agreed to updates when registering. Reply to this email to opt out.`)
-  const artists = await enqueueArtists(subject, [
-    `Upcoming exhibition: ${event.title}`,
-    `When: ${when}`,
-    `Where: ${place}`,
-    event.description,
-    `Apply for an exhibition stall: ${publicUrl('/book-your-stall')}`,
-    'You receive this because you are a registered artist on The Haat of Art. Reply to this email to opt out.',
-  ].join('\n\n'))
+    `${body}\n\nYou receive this because you opted in to exhibition updates.`)
   const whatsapp = await broadcastWhatsAppToConsentedVisitors(
-    `Upcoming exhibition: ${event.title}. When: ${when}. Where: ${place}. Register for your free entry pass: ${registerUrl}`)
-  const summary = { subscribers, visitors, artists, whatsapp: whatsapp.queued }
+    `Upcoming exhibition: ${event.title}. When: ${when}. Where: ${place}. Register for your free entry pass: ${whatsappRegisterUrl}`)
+  const summary = { subscribers, visitors, whatsapp: whatsapp.queued }
   await pool.query('UPDATE events SET announce_summary=? WHERE id=?', [JSON.stringify(summary), eventId])
-  return { queued: subscribers + visitors + artists, ...summary }
+  return { queued: subscribers + visitors, ...summary }
 }

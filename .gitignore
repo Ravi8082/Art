@@ -7,12 +7,15 @@ __v0_jsx-dev-runtime.ts
 .v0-trash/
 .vercel/
 
-# Environment variables
-.env*.local
-.env
-backend/.env
-backend/.env.*
-!backend/.env.example
+# Environment variables and credentials
+/.env
+/.env.*
+!/.env.example
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+*.pem
+*.key
 
 # Database dumps and TLS certificates
 backups/

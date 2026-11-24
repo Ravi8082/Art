@@ -1,14 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 
 const apiBase = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 export function PasswordReset() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -28,15 +26,10 @@ export function PasswordReset() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       })
-      const result = await response.json() as { message?: string; error?: string; notRegistered?: boolean }
-      if (response.status === 404 && result.notRegistered) {
-        setError('No account found with this email. Redirecting you to the register page…')
-        setTimeout(() => router.push('/visitor/register'), 1800)
-        return
-      }
+      const result = await response.json() as { message?: string; error?: string }
       if (!response.ok) throw new Error(result.error || 'Could not request a reset code.')
       setRequested(true)
-      setMessage(result.message || 'A reset code has been sent to your email.')
+      setMessage(result.message || 'If an active account uses this email, a reset code will be sent.')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not request a reset code.')
     } finally {
@@ -74,7 +67,7 @@ export function PasswordReset() {
         <Link href="/" className="role-brand" aria-label="The Haat of Art home"><img src="/media/logo.png" alt="The Haat of Art" /></Link>
         <p className="role-eyebrow">Account recovery</p>
         <h1>Reset your password</h1>
-        <p className="role-login-copy">We’ll send a secure, randomly generated code to your email address.</p>
+        <p className="role-login-copy">If an account exists for the email address, we’ll send a secure, randomly generated code.</p>
         {!requested ? (
           <form onSubmit={requestCode}>
             <label>Email address<input type="email" autoComplete="email" required maxLength={255} value={email} onChange={(event) => setEmail(event.target.value)} /></label>

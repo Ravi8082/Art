@@ -6,7 +6,7 @@ import { requireAuth, requirePermission, type AuthRequest } from '../middleware/
 import { hasValidMediaSignature, supportedMediaTypes } from '../services/media-validation.js'
 import { announceEvent } from './newsletter.js'
 import { countAudience } from '../services/outbox.js'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { cachePublic } from '../middleware/cache.js'
 
 export const eventsRouter = Router()

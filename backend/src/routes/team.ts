@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
-import rateLimit from 'express-rate-limit'
+import rateLimit from '../services/rate-limit.js'
 import { Router } from 'express'
 import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
@@ -96,8 +96,10 @@ teamRouter.post('/:id/reset-password', ...guard, writeLimit, async (req: AuthReq
     const found = await loadTarget(req)
     if (found.error !== undefined) return res.status(found.status).json({ error: found.error })
     const password = generatePassword()
-    await pool.query('UPDATE users SET password_hash=? WHERE id=?', [await bcrypt.hash(password, 12), req.params.id])
-    await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.params.id])
+    await withTransaction(async (db) => {
+      await db.query('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?', [await bcrypt.hash(password, 12), req.params.id])
+      await db.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.params.id])
+    })
     await pool.query('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)',
       [req.user!.id, 'team.member.password_reset', 'user', req.params.id, JSON.stringify({})])
     res.json({ password })
@@ -114,8 +116,10 @@ teamRouter.patch('/:id/status', ...guard, writeLimit, async (req: AuthRequest, r
       const [roots] = await pool.query<any[]>(`SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE r.name='SUPER_ADMIN' AND u.status='ACTIVE'`)
       if (roots.length <= 1) return res.status(409).json({ error: 'At least one active Super Admin must remain' })
     }
-    await pool.query('UPDATE users SET status=? WHERE id=?', [status, req.params.id])
-    if (status === 'SUSPENDED') await pool.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.params.id])
+    await withTransaction(async (db) => {
+      await db.query('UPDATE users SET status=?, session_version=session_version+? WHERE id=?', [status, status === 'SUSPENDED' ? 1 : 0, req.params.id])
+      if (status === 'SUSPENDED') await db.query('UPDATE refresh_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL', [req.params.id])
+    })
     await pool.query('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (?,?,?,?,?)',
       [req.user!.id, 'team.member.status_changed', 'user', req.params.id, JSON.stringify({ status })])
     res.json({ status })

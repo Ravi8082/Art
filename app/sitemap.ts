@@ -12,7 +12,6 @@ const pages: Array<[string, number, MetadataRoute.Sitemap[number]['changeFrequen
   ['/exhibitions/events', 0.9, 'weekly'],
   ['/indore', 0.9, 'weekly'],
   ['/book-your-stall', 0.9, 'weekly'],
-  ['/exhibit-with-us', 0.8, 'monthly'],
   ['/artist', 0.8, 'monthly'],
   ['/highlights', 0.7, 'monthly'],
   ['/gallery', 0.7, 'weekly'],

@@ -14,7 +14,7 @@ export const indoreEvent = {
   timing: '10:00 AM - 8:00 PM',
   badge: 'Free Entry for Visitors',
   heroImage: '/demo/ind-hero.jpg',
-  ctas: { stall: { label: 'Book Your Stall', href: '/exhibit-with-us' }, visitor: { label: 'Visitor Registration', href: '#register' } },
+  ctas: { stall: { label: 'Book Your Stall', href: '/exhibitions' }, visitor: { label: 'Visitor Registration', href: '#register' } },
 }
 
 export const indoreCollage = {

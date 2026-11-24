@@ -19,8 +19,27 @@ const config = {
 const missing = [
   ['DB_HOST', config.host], ['DB_PORT', config.port], ['DB_NAME', config.database],
   ['DB_USER', config.user], ['DB_PASSWORD', config.password],
-].filter(([, value]) => value === undefined).map(([name]) => name)
+].filter(([, value]) => !value?.trim()).map(([name]) => name)
 if (missing.length) throw new Error(`Missing required database environment variable(s): ${missing.join(', ')}`)
+if (process.env.NODE_ENV === 'production') {
+  const placeholders = ['your-database-name', 'your-database-user', 'your-database-password', 'your-mysql-host', 'test', 'change_me', 'changeme', 'xxxx']
+  const invalid = Object.entries({
+    DB_HOST: config.host,
+    DB_PORT: config.port,
+    DB_NAME: config.database,
+    DB_USER: config.user,
+    DB_PASSWORD: config.password,
+  })
+    .filter(([, value]) => !value?.trim() || placeholders.includes(value.trim().toLowerCase()) || value.trim().toLowerCase().startsWith('your-'))
+    .map(([key]) => key)
+  if (invalid.length) throw new Error(`Production database setting(s) contain placeholder values: ${invalid.join(', ')}`)
+  if (!/^(1|true|required)$/i.test(process.env.DB_SSL ?? '')) {
+    throw new Error('DB_SSL must be enabled in production')
+  }
+}
+if (!/^\d+$/.test(config.port ?? '') || Number(config.port) < 1 || Number(config.port) > 65535) {
+  throw new Error('DB_PORT must be an integer between 1 and 65535')
+}
 
 // TLS with certificate verification; never disabled. Use DB_SSL_CA (file path) or DB_SSL_CA_PEM (inline PEM).
 function buildSsl(): mysql.SslOptions | undefined {

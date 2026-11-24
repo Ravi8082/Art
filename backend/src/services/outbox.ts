@@ -16,8 +16,9 @@ export const retryDelaySeconds = (attempts: number) => [60, 300, 900, 3600][Math
 // Set-based enqueue: millions of rows are created by one INSERT…SELECT, never loaded into Node memory.
 export async function enqueueSubscribers(subject: string, body: string) {
   const [result] = await pool.query<any>(
-    `INSERT INTO email_outbox(id,recipient_email,subject,body,subscriber_id)
-     SELECT UUID(),email,?,CONCAT(?,CHAR(10),CHAR(10),'Unsubscribe: ',?),id
+    `INSERT IGNORE INTO email_outbox(id,recipient_email,subject,body,subscriber_id,category,marketing_week)
+     SELECT UUID(),email,?,CONCAT(?,CHAR(10),CHAR(10),'Unsubscribe: ',?),id,'MARKETING',
+       DATE_SUB(CURDATE(),INTERVAL WEEKDAY(CURDATE()) DAY)
      FROM newsletter_subscribers WHERE unsubscribed_at IS NULL`,
     [subject, body, UNSUBSCRIBE_PLACEHOLDER],
   )
@@ -26,28 +27,11 @@ export async function enqueueSubscribers(subject: string, body: string) {
 
 export async function enqueueConsentedVisitors(subject: string, body: string) {
   const [result] = await pool.query<any>(
-    `INSERT INTO email_outbox(id,recipient_email,subject,body)
-     SELECT UUID(),v.email,?,?
+    `INSERT IGNORE INTO email_outbox(id,recipient_email,subject,body,category,marketing_week)
+     SELECT UUID(),v.email,?,?,'MARKETING',DATE_SUB(CURDATE(),INTERVAL WEEKDAY(CURDATE()) DAY)
      FROM visitor_profiles v
      WHERE v.marketing_consent=1
        AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=v.email)`,
-    [subject, body],
-  )
-  return Number(result.affectedRows)
-}
-
-const artistAudienceWhere = `u.status='ACTIVE' AND (
-    EXISTS (SELECT 1 FROM artist_profiles ap WHERE ap.user_id=u.id)
-    OR EXISTS (SELECT 1 FROM exhibition_applications ea WHERE ea.user_id=u.id)
-    OR EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.name='ARTIST'))
-  AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=u.email)
-  AND NOT EXISTS (SELECT 1 FROM visitor_profiles v WHERE v.email=u.email AND v.marketing_consent=1)`
-
-// Artists with an account, profile or earlier stall application; people already reached as subscribers or visitors are skipped.
-export async function enqueueArtists(subject: string, body: string) {
-  const [result] = await pool.query<any>(
-    `INSERT INTO email_outbox(id,recipient_email,subject,body)
-     SELECT UUID(),u.email,?,? FROM users u WHERE ${artistAudienceWhere}`,
     [subject, body],
   )
   return Number(result.affectedRows)
@@ -58,9 +42,8 @@ export async function countAudience() {
     `SELECT
        (SELECT COUNT(*) FROM newsletter_subscribers WHERE unsubscribed_at IS NULL) subscribers,
        (SELECT COUNT(*) FROM visitor_profiles v WHERE v.marketing_consent=1
-          AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=v.email)) visitors,
-       (SELECT COUNT(*) FROM users u WHERE ${artistAudienceWhere}) artists`)
-  return { subscribers: Number(row.subscribers), visitors: Number(row.visitors), artists: Number(row.artists) }
+          AND NOT EXISTS (SELECT 1 FROM newsletter_subscribers s WHERE s.email=v.email)) visitors`)
+  return { subscribers: Number(row.subscribers), visitors: Number(row.visitors) }
 }
 
 async function claimBatch() {
@@ -73,7 +56,7 @@ async function claimBatch() {
     [claimToken, BATCH_SIZE],
   )
   const [rows] = await pool.query<any[]>(
-    `SELECT id,recipient_email email,subject,body,subscriber_id subscriberId,attempts
+    `SELECT id,recipient_email email,subject,body,subscriber_id subscriberId,category,attempts
      FROM email_outbox WHERE claim_token=? AND status='SENDING'`,
     [claimToken],
   )
@@ -82,10 +65,47 @@ async function claimBatch() {
 
 async function deliver(row: any) {
   let text: string = row.body
+  let visitorId: string | null = null
+  if (row.subscriberId) {
+    const [activeSubscribers] = await pool.query<any[]>(
+      'SELECT id FROM newsletter_subscribers WHERE id=? AND unsubscribed_at IS NULL',
+      [row.subscriberId],
+    )
+    if (!activeSubscribers.length) {
+      await pool.query("UPDATE email_outbox SET status='FAILED',body='',claim_token=NULL,locked_until=NULL,last_error='Marketing consent is no longer active' WHERE id=?", [row.id])
+      return
+    }
+  } else {
+    const [visitors] = await pool.query<any[]>(
+      'SELECT id FROM visitor_profiles WHERE email=? AND marketing_consent=1',
+      [row.email],
+    )
+    if (!visitors.length) {
+      await pool.query("UPDATE email_outbox SET status='FAILED',body='',claim_token=NULL,locked_until=NULL,last_error='Marketing consent is no longer active' WHERE id=?", [row.id])
+      return
+    }
+    visitorId = String(visitors[0].id)
+  }
+  if (row.category === 'MARKETING') {
+    try {
+      await pool.query(
+        'UPDATE email_outbox SET marketing_week=DATE_SUB(CURDATE(),INTERVAL WEEKDAY(CURDATE()) DAY) WHERE id=?',
+        [row.id],
+      )
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_ENTRY')) throw error
+      await pool.query("UPDATE email_outbox SET status='FAILED',body='',claim_token=NULL,locked_until=NULL,last_error='Weekly marketing limit reached' WHERE id=?", [row.id])
+      return
+    }
+  }
   if (row.subscriberId) {
     const token = secureToken()
     await pool.query('INSERT INTO newsletter_unsubscribe_tokens(token_hash,subscriber_id) VALUES (?,?)', [hashToken(token), row.subscriberId])
     text = text.replace(UNSUBSCRIBE_PLACEHOLDER, publicUrl(`/newsletter/unsubscribe?token=${encodeURIComponent(token)}`))
+  } else if (visitorId) {
+    const token = secureToken()
+    await pool.query('INSERT INTO visitor_marketing_unsubscribe_tokens(token_hash,visitor_id) VALUES (?,?)', [hashToken(token), visitorId])
+    text = `${text}\n\nUnsubscribe: ${publicUrl(`/newsletter/unsubscribe?token=${encodeURIComponent(token)}`)}`
   }
   try {
     const result = await sendEmail(row.email, row.subject, text)

@@ -12,6 +12,8 @@ import { HomepageHeroMediaManager } from '@/components/homepage-hero-media-manag
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 const maxFileBytes = 50 * 1024 * 1024
+const maxVenuePartnerLogoBytes = 5 * 1024 * 1024
+const venuePartnerLogoAccept = 'image/jpeg,image/png,image/webp'
 const imageAccept = 'image/jpeg,image/png,image/webp,image/gif'
 const homepageIcons = ['calendar', 'users', 'accessibility', 'palette', 'image', 'landmark', 'brush', 'archive'] as const satisfies readonly HomepageIcon[]
 const homepageIconLabels: Record<HomepageIcon, string> = {
@@ -60,6 +62,8 @@ type BlogReviewPost = {
   media?: { id: string; mediaType: 'IMAGE' | 'VIDEO'; url: string }[]
   submittedAt: string
 }
+type HomepageMediaItem = { mimeType: string; altText: string; url: string }
+type HomepageMediaMap = Record<string, HomepageMediaItem>
 
 async function readError(response: Response) {
   const result: unknown = await response.json().catch(() => null)
@@ -91,6 +95,8 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'h
   const [content, setContent] = useState<SiteContent>({ text: {}, artists: [], artworks: [] })
   const [homepageContent, setHomepageContent] = useState<HomepageContent>(defaultHomepageContent)
   const [homepageContentLoaded, setHomepageContentLoaded] = useState(false)
+  const [homepageMedia, setHomepageMedia] = useState<HomepageMediaMap>({})
+  const [venuePartnerUploading, setVenuePartnerUploading] = useState<number | null>(null)
   const [homepageHeroMedia, setHomepageHeroMedia] = useState<HomepageHeroMedia>(defaultHomepageHeroMedia)
   const [homepageHeroMediaLoading, setHomepageHeroMediaLoading] = useState(mode === 'homepage')
   const [homepageHeroMediaLoaded, setHomepageHeroMediaLoaded] = useState(false)
@@ -134,6 +140,11 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'h
     } finally {
       setHomepageHeroMediaLoading(false)
     }
+  }, [])
+
+  const loadHomepageMedia = useCallback(async () => {
+    const response = await api('/api/homepage/media', { cache: 'no-store' })
+    setHomepageMedia(await response.json() as HomepageMediaMap)
   }, [])
 
   const reportRequestError = useCallback((cause: unknown, fallback: string, retry?: () => void) => {
@@ -181,7 +192,8 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'h
   useEffect(() => {
     if (mode !== 'homepage' || !signedIn) return
     attemptLoad(loadHomepageHeroMedia, 'Hero media could not be loaded.')
-  }, [attemptLoad, loadHomepageHeroMedia, mode, signedIn])
+    attemptLoad(loadHomepageMedia, 'Homepage media could not be loaded.')
+  }, [attemptLoad, loadHomepageHeroMedia, loadHomepageMedia, mode, signedIn])
 
   async function run(action: () => Promise<void | string>, success: string) {
     setBusy(true)
@@ -312,6 +324,40 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'h
 
   function updateHomepageSection<K extends keyof HomepageContent>(key: K, value: HomepageContent[K]) {
     setHomepageContent((current) => ({ ...current, [key]: value }))
+  }
+
+  async function uploadVenuePartnerLogo(index: number, file: File) {
+    setError('')
+    setMessage('')
+    if (!homepageContent.venuePartners[index]?.name.trim()) {
+      setError('Enter the partner name before uploading its logo.')
+      return
+    }
+    // SECURITY: Check the selected file's declared image type and size; the upload endpoint also verifies its binary signature and permission.
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Choose a JPG, PNG, or WebP logo.')
+      return
+    }
+    if (file.size === 0 || file.size > maxVenuePartnerLogoBytes) {
+      setError('Venue partner logos must be smaller than 5 MB.')
+      return
+    }
+
+    const key = `venuePartner${index + 1}`
+    setVenuePartnerUploading(index)
+    try {
+      await api(`/api/homepage/media/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type, 'X-Alt-Text': `Venue partner logo ${index + 1}` },
+        body: file,
+      })
+      await loadHomepageMedia()
+      setMessage(`Venue partner ${index + 1} logo uploaded.`)
+    } catch (cause) {
+      reportRequestError(cause, 'Venue partner logo could not be uploaded.', () => { void uploadVenuePartnerLogo(index, file) })
+    } finally {
+      setVenuePartnerUploading(null)
+    }
   }
 
   function saveHomepage(event: FormEvent<HTMLFormElement>) {
@@ -771,17 +817,33 @@ export function SiteContentManager({ mode = 'content' }: { mode?: 'content' | 'h
             </form>
 
             <form className="event-form site-content-section" onSubmit={(event) => saveHomepageSection(event, 'Venue partners saved.')}>
-              <div className="site-content-section-heading"><span className="site-content-section-icon"><Users size={19} /></span><div><p className="eyebrow">Section 8</p><h2>Venue partners</h2><p>Manage the venue names displayed in the homepage partner strip.</p></div></div>
+              <div className="site-content-section-heading"><span className="site-content-section-icon"><Users size={19} /></span><div><p className="eyebrow">Section 8</p><h2>Venue partners</h2><p>Manage partner names and logos displayed in the homepage strip.</p></div></div>
               <div className="site-content-add-grid homepage-admin-two-column">
                 {homepageContent.venuePartners.map((partner, index) => (
                   <div className="sd-col" key={`homepage-partner-${index}`}>
                     <label>Partner name<input maxLength={160} value={partner.name} onChange={(event) => updateHomepageSection('venuePartners', homepageContent.venuePartners.map((item, itemIndex) => itemIndex === index ? { name: event.target.value } : item))} /></label>
-                    <button type="button" className="site-content-remove" disabled={busy || !homepageContentLoaded} onClick={() => updateHomepageSection('venuePartners', homepageContent.venuePartners.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={14} />Remove partner</button>
+                    {homepageMedia[`venuePartner${index + 1}`] && <img
+                      className="homepage-venue-partner-logo-preview"
+                      src={`${apiBaseUrl}${homepageMedia[`venuePartner${index + 1}`].url}`}
+                      alt={`${partner.name || `Venue partner ${index + 1}`} logo`}
+                    />}
+                    <label>Partner logo<input
+                      type="file"
+                      accept={venuePartnerLogoAccept}
+                      disabled={busy || venuePartnerUploading !== null || !signedIn || !homepageContentLoaded}
+                      aria-label={`Upload logo for ${partner.name || `venue partner ${index + 1}`}`}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0]
+                        event.currentTarget.value = ''
+                        if (file) void uploadVenuePartnerLogo(index, file)
+                      }}
+                    /><small>{venuePartnerUploading === index ? 'Uploading…' : 'JPG, PNG, or WebP · up to 5 MB'}</small></label>
+                    <button type="button" className="site-content-remove" disabled={busy || venuePartnerUploading !== null || !homepageContentLoaded} onClick={() => updateHomepageSection('venuePartners', homepageContent.venuePartners.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={14} />Remove partner</button>
                   </div>
                 ))}
               </div>
-              <button type="button" className="site-content-add" disabled={busy || !homepageContentLoaded || homepageContent.venuePartners.length >= 5} onClick={() => updateHomepageSection('venuePartners', [...homepageContent.venuePartners, { name: '' }])}><Plus size={14} /> Add venue partner</button>
-              <div className="site-content-form-actions"><span>Only list confirmed venue partners.</span><button disabled={busy || !homepageContentLoaded} type="submit"><Save size={15} />{busy ? 'Saving…' : 'Save partners'}</button></div>
+              <button type="button" className="site-content-add" disabled={busy || venuePartnerUploading !== null || !homepageContentLoaded || homepageContent.venuePartners.length >= 5} onClick={() => updateHomepageSection('venuePartners', [...homepageContent.venuePartners, { name: '' }])}><Plus size={14} /> Add venue partner</button>
+              <div className="site-content-form-actions"><span>Logos upload immediately and follow list order; save names to publish text changes.</span><button disabled={busy || venuePartnerUploading !== null || !homepageContentLoaded} type="submit"><Save size={15} />{busy ? 'Saving…' : 'Save partners'}</button></div>
             </form>
 
             <form className="event-form site-content-section" onSubmit={(event) => saveTextGroup(event, footerTextFields, 'Footer locations saved.')} key={`footer-locations-${JSON.stringify(content.text.footerLocations)}`}>

@@ -107,7 +107,7 @@ export function HeroSection({
         </p>
         <div className="th-hero-actions">
           <MagneticLink className="th-btn" href="/exhibitions">Explore Exhibitions <ArrowRight size={16} /></MagneticLink>
-          <MagneticLink className="th-hero-glass-btn" href="/exhibit-with-us">Exhibit With Us</MagneticLink>
+          <MagneticLink className="th-hero-glass-btn" href="/exhibitions">Exhibit With Us</MagneticLink>
         </div>
       </motion.div>
       <div className="th-hero-trustbar" aria-label="The Haat of Art at a glance">
