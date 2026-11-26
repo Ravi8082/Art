@@ -19,11 +19,18 @@ The frontend remains at port 3000. In production, use a managed MySQL instance, 
 - `POST /api/auth/verify-email`, `POST /api/auth/resend-verification` — verify new visitor/exhibitor accounts with cryptographically random 6-digit codes.
 - `POST /api/auth/password-reset/request`, `POST /api/auth/password-reset/confirm` — request and verify one-time email codes to reset a password.
 - `POST /api/auth/register-visitor` — creates an unverified Visitor account and sends an email code.
+- `POST /api/auth/mobile/login`, `POST /api/auth/mobile/login/verify`, `POST /api/auth/mobile/verify-email` — native sign-in and verification; returns a 15-minute bearer access token and a rotating refresh token.
+- `POST /api/auth/mobile/refresh`, `POST /api/auth/mobile/logout` — rotate or revoke the native refresh session. Refresh tokens are stored as hashes in the existing `refresh_sessions` table; no new database or migration is needed. Website cookie authentication is unchanged.
+- `GET /api/bookings/events/:eventId/stalls` — live stalls and admin-configured availability/pricing. `POST`/`DELETE /api/bookings/events/:eventId/stalls/:stallId/hold` temporarily lock a stall for a verified exhibitor for 10 minutes; expired locks are released automatically.
+- `POST /api/bookings/applications` — creates an exhibitor application and validates/releases its temporary stall lock atomically. `POST /api/bookings/bookings` creates the final booking only after approval; MySQL uniqueness and transaction locks prevent the same stall being actively booked twice. `BOOKING_HOLD_MINUTES` controls the separate payment hold.
+- `GET /api/bookings/admin/locations`, `/api/bookings/admin/applications`, and `/api/bookings/admin/bookings` — permission-gated operations data shared by the website and mobile admin screens. Application and booking lists accept `city`, `state`, `eventId`, `status`, and `q` filters; booking records include applicant contact, event location, stall, and payment details.
+- `GET /api/bookings/admin/applications/:id`, `PUT /api/bookings/admin/applications/:id/decision`, and `POST /api/bookings/admin/payments/:paymentId/{verify|reject}` — view applicant details, record a review decision, and verify or reject a payment. These routes require `bookings:manage`.
 - `GET /api/passes/visitor/events`, `GET /api/passes/visitor/passes`, `POST /api/passes/visitor/events/:eventId/register` — visitor-only event discovery, pass list, and registration.
 - `GET/PUT /api/passes/visitor/preferences` — visitor email announcement and transactional-notice preferences.
 - `GET /api/passes/attendees` — registration-staff attendee lookup by exhibition, name, or email.
 - `POST /api/passes/check-in` — permission-gated staff check-in; QR pass tokens are signed, stored as hashes, revocable, and single-use.
-- `GET /api/events`, `POST /api/events`, `PATCH /api/events/:id/approve`, `PATCH /api/events/:id/publish`
+- `GET /api/events`, `GET /api/events/:id`, `POST /api/events`, `PATCH /api/events/:id/approve`, `PATCH /api/events/:id/publish` — public lists keep their array response by default; `page`/`pageSize` enable bounded pagination, and `upcoming=true` filters to not-yet-ended events.
+- `GET /api/artists`, `GET /api/artists/curated-gallery` — public directory and gallery; `page`/`pageSize` opt into paginated responses while requests without those parameters preserve the existing response.
 - `POST /api/events/:id/media` — authenticated event media upload (50 MB maximum per file); image/video bytes are stored in MySQL.
 - `GET /api/events/:id/media/:mediaId` — retrieve media for an approved or published event.
 - `GET /api/homepage/media` — public homepage media URLs and metadata.
@@ -50,9 +57,9 @@ The frontend remains at port 3000. In production, use a managed MySQL instance, 
 - `GET /api/dashboard/audit` — permission-gated, paginated and searchable administrative audit trail.
 - `GET /api/dashboard/system` — Super Admin runtime, database, account-security and email-queue health overview.
 
-The migrations include the visitor, registration, QR pass, check-in, per-user permissions, newsletter, artist application, enquiry, audit, and email delivery tables. Visitor/exhibitor email verification, password resets, newsletter subscriptions, pass issuance, QR display, staff check-in, and per-user permission grants are implemented. The visitor UI scans with the browser's native QR detector when available and offers manual pass-code entry as a fallback. Contact enquiries, their workflow, attachments, notifications and audit trail are implemented end to end. The background email retry worker still needs implementation before production use.
+The migrations include the visitor, registration, QR pass, check-in, per-user permissions, newsletter, artist application, stall booking and temporary selection-lock, enquiry, audit, and email delivery tables. Visitor/exhibitor email verification, password resets, newsletter subscriptions, pass issuance, QR display, staff check-in, and per-user permission grants are implemented. The visitor UI scans with the browser's native QR detector when available and offers manual pass-code entry as a fallback. Contact enquiries, their workflow, attachments, notifications and audit trail are implemented end to end. The background email retry worker still needs implementation before production use.
 
-OTP codes are generated with Node.js cryptographic randomness, stored as hashes, expire after five minutes, and allow at most five verification attempts. Signup verification and password-reset endpoints use this flow. Sign-in remains password-only to preserve existing sign-in behavior. Configure `FRONTEND_ORIGIN` and SMTP settings in the backend environment for production newsletter links and delivery.
+OTP codes are generated with Node.js cryptographic randomness, stored as hashes, expire after five minutes, and allow at most five verification attempts. Signup verification and password-reset endpoints use this flow. Mobile bearer access tokens are accepted by the same `requireAuth` middleware as website sessions, while website cookie behavior remains unchanged. Configure `FRONTEND_ORIGIN` and SMTP settings in the backend environment for production newsletter links and delivery.
 
 ## Local test environment
 

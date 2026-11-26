@@ -22,7 +22,8 @@
 .abm-section-head .abm-back:disabled { opacity: .55; cursor: wait; }
 
 /* ---------- filters ---------- */
-.abm-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr); gap: 12px; align-items: end; }
+.abm-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.6fr); gap: 12px; align-items: end; }
+.abm-booking-location-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .abm .abm-filters label { display: grid; gap: 6px; font: 700 10px var(--font-poppins, sans-serif); letter-spacing: .6px; text-transform: uppercase; color: #6b7480; }
 .abm .abm-filters input,
 .abm .abm-filters select {
@@ -190,9 +191,11 @@
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
   .abm-filters { grid-template-columns: 1fr 1fr; }
+  .abm-booking-location-filters { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 620px) {
   .abm-filters { grid-template-columns: 1fr; }
+  .abm-booking-location-filters { grid-template-columns: 1fr; }
   .abm-review-meta { margin-left: 0; justify-items: start; }
   .abm-field { grid-template-columns: 1fr; gap: 2px; padding: 10px 0; }
   .abm-field-colon { display: none; }

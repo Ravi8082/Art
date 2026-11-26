@@ -182,6 +182,14 @@ export const getStalls = (eventId: string, state = '') => bookingApi<Stall[]>(
   `/api/bookings/events/${encodeURIComponent(eventId)}/stalls${state ? `?state=${encodeURIComponent(state)}` : ''}`,
   { cache: 'no-store' },
 )
+export const holdStall = (eventId: string, stallId: string) => bookingApi<{ id: string; expiresAt: string; holdMinutes: number }>(
+  `/api/bookings/events/${encodeURIComponent(eventId)}/stalls/${encodeURIComponent(stallId)}/hold`,
+  { method: 'POST' },
+)
+export const releaseStallHold = (eventId: string, stallId: string) => bookingApi<void>(
+  `/api/bookings/events/${encodeURIComponent(eventId)}/stalls/${encodeURIComponent(stallId)}/hold`,
+  { method: 'DELETE' },
+)
 export const getMine = () => bookingApi<{ applications: MineApplication[]; bookings: MyBooking[] }>('/api/bookings/mine')
 export const getReceipt = (bookingId: string) => bookingApi<Receipt>(`/api/bookings/bookings/${encodeURIComponent(bookingId)}/receipt`)
 

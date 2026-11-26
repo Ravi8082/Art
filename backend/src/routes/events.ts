@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { pool, withTransaction } from '../db/pool.js'
 import { requireAuth, requirePermission, type AuthRequest } from '../middleware/auth.js'
 import { hasValidMediaSignature, supportedMediaTypes } from '../services/media-validation.js'
+import { pageMetadata, paginationRequested, publicPaginationSchema } from '../services/public-pagination.js'
 import { announceEvent } from './newsletter.js'
 import { countAudience } from '../services/outbox.js'
 import rateLimit from '../services/rate-limit.js'
@@ -22,31 +23,49 @@ const stateStallPlan = z.array(z.object({
 })).max(500).default([])
 const slugify = (value: string) => `${value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${crypto.randomBytes(3).toString('hex')}`
 
-eventsRouter.get('/', cachePublic(30), async (_req, res, next) => {
+eventsRouter.get('/', cachePublic(30), async (req, res, next) => {
   try {
+    const isPaginated = paginationRequested(req.query)
+    const pagination = publicPaginationSchema.extend({
+      upcoming: z.enum(['true', 'false']).default('false'),
+    }).safeParse(req.query)
+    if (!pagination.success) return res.status(400).json({ error: 'Invalid event list query' })
+    const { page, pageSize } = pagination.data
+    const upcoming = pagination.data.upcoming === 'true'
+    const where = `WHERE e.status IN ('PUBLISHED','APPROVED')${upcoming ? ' AND e.ends_at>=NOW()' : ''}`
+    const pageClause = isPaginated ? 'LIMIT ? OFFSET ?' : ''
     const [events] = await pool.query<any[]>(`
       SELECT e.id, e.slug, e.title, e.description, e.starts_at startsAt, e.ends_at endsAt,
         e.venue, e.city, e.state, e.status
       FROM events e
-      WHERE e.status IN ('PUBLISHED','APPROVED')
-      ORDER BY e.starts_at
-    `)
-    if (!events.length) return res.json([])
+      ${where}
+      ORDER BY e.starts_at,e.id
+      ${pageClause}
+    `, isPaginated ? [pageSize, (page - 1) * pageSize] : [])
+    let total = events.length
+    if (isPaginated) {
+      const [[count]] = await pool.query<any[]>(`SELECT COUNT(*) total FROM events e ${where}`)
+      total = Number(count.total)
+    }
 
-    const placeholders = events.map(() => '?').join(',')
-    const [media] = await pool.query<any[]>(`
-      SELECT id, event_id eventId, alt_text altText, media_type mediaType
-      FROM event_media
-      WHERE event_id IN (${placeholders}) AND data IS NOT NULL
-      ORDER BY sort_order, id
-    `, events.map((event) => event.id))
+    let media: any[] = []
+    if (events.length) {
+      const placeholders = events.map(() => '?').join(',')
+      const [pageMedia] = await pool.query<any[]>(`
+        SELECT id, event_id eventId, alt_text altText, media_type mediaType
+        FROM event_media
+        WHERE event_id IN (${placeholders}) AND data IS NOT NULL
+        ORDER BY sort_order, id
+      `, events.map((event) => event.id))
+      media = pageMedia
+    }
     const mediaByEvent = new Map<string, typeof media>()
     for (const item of media) {
       const group = mediaByEvent.get(item.eventId) ?? []
       group.push(item)
       mediaByEvent.set(item.eventId, group)
     }
-    res.json(events.map((event) => ({
+    const result = events.map((event) => ({
       ...event,
       media: (mediaByEvent.get(event.id) ?? []).map((item) => ({
         id: item.id,
@@ -54,7 +73,42 @@ eventsRouter.get('/', cachePublic(30), async (_req, res, next) => {
         mediaType: item.mediaType,
         url: `/api/events/${event.id}/media/${item.id}`,
       })),
-    })))
+    }))
+    if (!isPaginated) return res.json(result)
+    res.json({
+      events: result,
+      ...pageMetadata(page, pageSize, total),
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+eventsRouter.get('/:id', cachePublic(30), async (req, res, next) => {
+  try {
+    const eventId = z.string().uuid().safeParse(req.params.id)
+    if (!eventId.success) return res.status(404).json({ error: 'Exhibition not found' })
+    const [[event]] = await pool.query<any[]>(`
+      SELECT e.id,e.slug,e.title,e.description,e.starts_at startsAt,e.ends_at endsAt,
+        e.venue,e.city,e.state,e.status
+      FROM events e
+      WHERE e.id=? AND e.status IN ('PUBLISHED','APPROVED')
+      LIMIT 1
+    `, [eventId.data])
+    if (!event) return res.status(404).json({ error: 'Exhibition not found' })
+    const [media] = await pool.query<any[]>(`
+      SELECT id,alt_text altText,media_type mediaType
+      FROM event_media
+      WHERE event_id=? AND data IS NOT NULL
+      ORDER BY sort_order,id
+    `, [eventId.data])
+    res.json({
+      ...event,
+      media: media.map((item) => ({
+        ...item,
+        url: `/api/events/${event.id}/media/${item.id}`,
+      })),
+    })
   } catch (error) {
     next(error)
   }

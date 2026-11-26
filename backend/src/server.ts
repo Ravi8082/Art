@@ -86,13 +86,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '1mb' }))
 app.use(cookieParser(process.env.COOKIE_SECRET ?? 'development-cookie-secret'))
 function rateLimitUserId(req: express.Request) {
-  const token = req.signedCookies?.session
+  const authorization = req.get('authorization')
+  const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]
+  const token = bearerToken ?? req.signedCookies?.session
   if (typeof token !== 'string') return undefined
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET ?? '', { algorithms: ['HS256'] })
-    return typeof payload === 'object' && typeof payload.sub === 'string' && !('purpose' in payload)
-      ? payload.sub
-      : undefined
+    if (typeof payload !== 'object' || typeof payload.sub !== 'string' || 'purpose' in payload) return undefined
+    if (bearerToken && payload.tokenUse !== 'mobile_access') return undefined
+    if (!bearerToken && 'tokenUse' in payload) return undefined
+    return payload.sub
   } catch {
     return undefined
   }

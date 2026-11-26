@@ -1,11 +1,9 @@
-import crypto from 'node:crypto'
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import rateLimit from '../services/rate-limit.js'
 import { z } from 'zod'
-import { pool, withTransaction } from '../db/pool.js'
+import { pool } from '../db/pool.js'
 import { requireAuth, requirePermission, requireRole, type AuthRequest } from '../middleware/auth.js'
 import { cachePublic } from '../middleware/cache.js'
-import { queueEmail } from '../services/mailer.js'
 import { hashPassToken, newReferenceCode, referenceQrValue } from '../services/pass-token.js'
 
 export const exhibitionsRouter = Router()
@@ -219,143 +217,8 @@ exhibitionsRouter.post('/:eventSlug/passes', requireAuth, requireRole(...adminRo
   }
 })
 
-const registerInput = z.object({
-  eventSlug: z.string().trim().min(1).max(255),
-  fullName: z.string().trim().min(2).max(160),
-  phone: z.string().trim().regex(/^[0-9+() -]{10,18}$/),
-  email: z.string().email().max(255),
-  city: z.string().trim().min(2).max(120),
-  state: z.string().trim().min(2).max(120),
-  passPlan: z.enum(['FREE', 'PAID']),
-  preferredVisitDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  quantity: z.number().int().min(1).max(10),
+visitorPassesRouter.post('/', registerLimit, (_req, res) => {
+  res.status(428).json({
+    error: 'Email verification is required. Request and verify a code through the visitor pass registration flow before a pass can be issued.',
+  })
 })
-
-function makePassCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  const suffix = Array.from(crypto.randomBytes(4), (byte) => alphabet[byte % alphabet.length]).join('')
-  return `THOA-${new Date().getFullYear()}-${suffix}`
-}
-
-const publicRegistration = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const input = registerInput.parse(req.body)
-    const email = input.email.trim().toLowerCase()
-    const event = await findEventBySlug(input.eventSlug)
-    if (!event) return res.status(409).json({ error: 'Registration is not open for this exhibition.' })
-    const outcome = await withTransaction(async (connection) => {
-      const [eventRows] = await connection.query<any[]>(`SELECT id,slug,title,city,state,venue,starts_at startsAt,
-        ends_at endsAt FROM events e WHERE id=? AND ${openEventWhere} FOR UPDATE`, [event.id])
-      const currentEvent = eventRows[0]
-      if (!currentEvent) return { status: 409 as const, error: 'Registration is not open for this exhibition.' }
-
-      const [configRows] = await connection.query<any[]>(`SELECT pass_mode passMode,free_capacity freeCapacity,
-        paid_price paidPrice,paid_capacity paidCapacity,free_perks freePerks,paid_perks paidPerks
-        FROM event_pass_configs WHERE event_id=? FOR UPDATE`, [event.id])
-      const config = passConfig(configRows[0])
-      if ((config.passMode === 'FREE' && input.passPlan !== 'FREE') || (config.passMode === 'PAID' && input.passPlan !== 'PAID')) {
-        return { status: 409 as const, error: 'This pass plan is not currently offered for the selected exhibition.' }
-      }
-
-      const [dateRows] = await connection.query<any[]>(`SELECT (? BETWEEN DATE(starts_at) AND DATE(ends_at)) validDay
-        FROM events WHERE id=?`, [input.preferredVisitDay, event.id])
-      if (!Number(dateRows[0]?.validDay)) {
-        return { status: 400 as const, error: 'Choose a visit day within the exhibition dates.' }
-      }
-
-      const [profiles] = await connection.query<any[]>('SELECT id FROM visitor_profiles WHERE email=? FOR UPDATE', [email])
-      const profileId = profiles[0]?.id ?? crypto.randomUUID()
-      const [registrationRows] = await connection.query<any[]>(`SELECT r.id registrationId,r.status,r.pass_tier passTier,
-        r.quantity,r.payment_status paymentStatus,q.id passId,c.id checkedIn
-        FROM event_registrations r LEFT JOIN qr_passes q ON q.registration_id=r.id
-        LEFT JOIN check_ins c ON c.pass_id=q.id WHERE r.event_id=? AND r.visitor_id=? FOR UPDATE`,
-      [event.id, profileId])
-      const existing = registrationRows[0]
-      if (existing?.checkedIn) return { status: 409 as const, error: 'This registration has already been used. Please contact the event team for help.' }
-
-      const passTier = input.passPlan
-      const capacity = passTier === 'FREE' ? config.freeCapacity : config.paidCapacity
-      const [usageRows] = await connection.query<any[]>(`SELECT COALESCE(SUM(quantity),0) issued
-        FROM event_registrations WHERE event_id=? AND pass_tier=? AND status='REGISTERED'
-          AND (? IS NULL OR id<>?)`, [event.id, passTier, existing?.registrationId ?? null, existing?.registrationId ?? null])
-      const issued = Number(usageRows[0]?.issued ?? 0)
-      if (capacity !== null && issued + input.quantity > capacity) {
-        return { status: 409 as const, error: 'This pass tier has reached its current capacity. Please choose another pass plan or exhibition.' }
-      }
-
-      if (profiles.length) {
-        await connection.query('UPDATE visitor_profiles SET full_name=?,phone=?,city=?,attending_as=? WHERE id=?',
-          [input.fullName, input.phone, input.city, 'Visitor', profileId])
-      } else {
-        await connection.query(`INSERT INTO visitor_profiles
-          (id,email,full_name,phone,city,attending_as,marketing_consent,email_verified_at)
-          VALUES (?,?,?,?,?,'Visitor',FALSE,NULL)`, [profileId, email, input.fullName, input.phone, input.city])
-      }
-
-      const registrationId = existing?.registrationId ?? crypto.randomUUID()
-      const passId = existing?.passId ?? crypto.randomUUID()
-      const passCode = makePassCode()
-      const reference = newReferenceCode()
-      const qrData = referenceQrValue(reference)
-      const paymentStatus = passTier === 'FREE' ? 'NOT_REQUIRED' : 'PENDING'
-      if (existing) {
-        await connection.query(`UPDATE event_registrations SET status='REGISTERED',visitor_state=?,visitor_city=?,
-          pass_tier=?,quantity=?,preferred_visit_day=?,payment_status=?,pass_code=? WHERE id=?`,
-        [input.state, input.city, passTier, input.quantity, input.preferredVisitDay, paymentStatus, passCode, registrationId])
-        if (existing.passId) {
-          await connection.query('UPDATE qr_passes SET token_hash=?,reference_code=?,revoked_at=NULL WHERE id=?',
-            [hashPassToken(reference), reference, passId])
-        } else {
-          await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash,reference_code) VALUES (?,?,?,?)',
-            [passId, registrationId, hashPassToken(reference), reference])
-        }
-      } else {
-        await connection.query(`INSERT INTO event_registrations
-          (id,event_id,visitor_id,status,visitor_state,visitor_city,pass_tier,quantity,preferred_visit_day,payment_status,pass_code)
-          VALUES (?,?,?,'REGISTERED',?,?,?,?,?,?,?)`,
-        [registrationId, event.id, profileId, input.state, input.city, passTier, input.quantity,
-          input.preferredVisitDay, paymentStatus, passCode])
-        await connection.query('INSERT INTO qr_passes(id,registration_id,token_hash,reference_code) VALUES (?,?,?,?)',
-          [passId, registrationId, hashPassToken(reference), reference])
-      }
-
-      await connection.query('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata) VALUES (NULL,?,?,?,?)',
-        ['visitor.pass.issued', 'event_registration', registrationId, JSON.stringify({
-          eventId: event.id, source: 'public_visitor_pass_form', passTier, quantity: input.quantity, paymentStatus,
-        })])
-      return {
-        status: 200 as const,
-        pass: {
-          passId, passCode, qrData, eventSlug: currentEvent.slug, eventTitle: currentEvent.title,
-          startsAt: currentEvent.startsAt, endsAt: currentEvent.endsAt, city: currentEvent.city,
-          state: currentEvent.state, venue: currentEvent.venue, passTier, paymentStatus,
-          amount: passTier === 'PAID' ? config.paidPrice : 0,
-          quantity: input.quantity, preferredVisitDay: input.preferredVisitDay,
-        },
-      }
-    })
-    if (!outcome.pass) return res.status(outcome.status).json({ error: outcome.error })
-
-    const paymentNote = outcome.pass.paymentStatus === 'PENDING'
-      ? 'This VIP reservation is pending payment. Payment collection is not enabled yet, so the QR is not valid for entry until payment is confirmed.'
-      : 'Your free visitor pass is confirmed.'
-    const passUrl = `${process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000'}/visitor/pass/${encodeURIComponent(outcome.pass.qrData)}`
-    const emailDelivery = await queueEmail(email, 'Your Haat of Art visitor pass',
-      `${paymentNote}\n\nPass ID: ${outcome.pass.passCode}\nExhibition: ${outcome.pass.eventTitle}\nVisit day: ${input.preferredVisitDay}\nNumber of passes: ${outcome.pass.quantity}\nView your digital pass: ${passUrl}`,
-      { whatsappPhone: input.phone })
-    if (!emailDelivery.delivered) {
-      console.error('Visitor pass confirmation email could not be delivered', { reason: emailDelivery.reason })
-    }
-    res.json({
-      pass: outcome.pass,
-      emailSent: emailDelivery.delivered,
-      message: outcome.pass.paymentStatus === 'PENDING'
-        ? `Your VIP reservation QR is ready. ${paymentNote}${emailDelivery.delivered ? ' A copy was emailed to you.' : ''}`
-        : `Your free entry QR pass is ready.${emailDelivery.delivered ? ' A copy was emailed to you.' : ' The confirmation email could not be sent.'}`,
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-visitorPassesRouter.post('/', registerLimit, publicRegistration)

@@ -15,6 +15,7 @@ const manage = [requireAuth, requirePermission('bookings:manage')] as const
 const uploadBody = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'], limit: '25mb' })
 
 const HOLD_MINUTES = Math.max(0.05, Number(process.env.BOOKING_HOLD_MINUTES ?? 1440))
+const STALL_SELECTION_HOLD_MINUTES = 10
 const webhookSecret = () => {
   const secret = process.env.PAYMENT_WEBHOOK_SECRET
   if (secret) return secret
@@ -30,6 +31,11 @@ const splitStates = (value: unknown) => String(value ?? '').split(/[,;/]/).map((
 // Discriminated transaction results: `ok` is a literal so narrowing is reliable.
 const fail = (status: number, error: string) => ({ ok: false as const, status, error })
 const done = <T extends object>(data: T) => ({ ok: true as const, ...data })
+function isActiveStallDuplicate(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ER_DUP_ENTRY'
+    && 'message' in error && typeof error.message === 'string'
+    && /uq_active_stall_(hold|booking)|uq_active_selection_user/.test(error.message)
+}
 
 type Queryable = { query: (sql: string, params?: unknown[]) => Promise<unknown> }
 
@@ -47,20 +53,29 @@ const stallSelect = `
          st.id typeId, st.code typeCode, st.name typeName, st.category, st.width_m widthM, st.depth_m depthM,
          COALESCE(statePricing.price, pricing.price) price, COALESCE(statePricing.tax_rate, pricing.tax_rate) taxRate, st.includes,
          b.id bookingId, b.status bookingStatus,
-         h.expires_at holdExpiresAt
+         h.expires_at holdExpiresAt, selectionHold.id selectionHoldId, selectionHold.expires_at selectionHoldExpiresAt
   FROM stalls s
   JOIN stall_types st ON st.id = s.stall_type_id
   LEFT JOIN event_state_stall_pricing statePricing ON statePricing.event_id = s.event_id AND statePricing.state = s.state AND statePricing.stall_type_id = st.id
   LEFT JOIN event_stall_pricing pricing ON pricing.event_id = s.event_id AND pricing.stall_type_id = st.id
 `
 const stallBookingsJoins = `
-  LEFT JOIN stall_bookings b ON b.stall_id = s.id AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING')
-  LEFT JOIN stall_holds h ON h.booking_id = b.id AND h.released_at IS NULL AND h.expires_at > NOW()`
+  LEFT JOIN stall_bookings b ON b.stall_id = s.id AND (
+    b.status IN ('CONFIRMED','REFUND_PENDING')
+    OR (b.status = 'PAYMENT_PENDING' AND EXISTS (
+      SELECT 1 FROM stall_holds activeHold
+      WHERE activeHold.booking_id = b.id AND activeHold.released_at IS NULL AND activeHold.expires_at > NOW()
+    ))
+  )
+  LEFT JOIN stall_holds h ON h.booking_id = b.id AND h.released_at IS NULL AND h.expires_at > NOW()
+  LEFT JOIN stall_holds selectionHold ON selectionHold.stall_id = s.id AND selectionHold.booking_id IS NULL
+    AND selectionHold.released_at IS NULL AND selectionHold.expires_at > NOW()`
 
-function stallStatus(row: { baseStatus: string; bookingStatus: string | null }) {
+function stallStatus(row: { baseStatus: string; bookingStatus: string | null; selectionHoldId: string | null }) {
   if (row.baseStatus === 'DISABLED') return 'DISABLED'
-  if (row.bookingStatus === 'CONFIRMED') return 'BOOKED'
+  if (row.bookingStatus === 'CONFIRMED' || row.bookingStatus === 'REFUND_PENDING') return 'BOOKED'
   if (row.bookingStatus) return 'HELD'
+  if (row.selectionHoldId) return 'HELD'
   if (row.baseStatus === 'BOOKED') return 'BOOKED'
   if (row.baseStatus === 'RESERVED') return 'RESERVED'
   return 'AVAILABLE'
@@ -72,7 +87,10 @@ const exhibitionSelect = `
          (SELECT COUNT(*) FROM stalls s
            WHERE s.event_id = e.id AND s.status = 'AVAILABLE'
              AND NOT EXISTS (SELECT 1 FROM stall_bookings b WHERE b.stall_id = s.id
-               AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING'))) availableStalls,
+               AND (b.status IN ('CONFIRMED','REFUND_PENDING') OR (b.status='PAYMENT_PENDING'
+                 AND EXISTS (SELECT 1 FROM stall_holds h WHERE h.booking_id=b.id AND h.released_at IS NULL AND h.expires_at>NOW()))))
+             AND NOT EXISTS (SELECT 1 FROM stall_holds h WHERE h.stall_id=s.id
+               AND h.booking_id IS NULL AND h.released_at IS NULL AND h.expires_at>NOW())) availableStalls,
          (SELECT COUNT(*) FROM stalls s WHERE s.event_id = e.id) totalStalls
   FROM events e
   WHERE e.status IN ('PUBLISHED','APPROVED') AND e.ends_at >= NOW()`
@@ -161,7 +179,7 @@ async function exhibitionsWithMedia() {
   if (!events.length) return []
   const placeholders = events.map(() => '?').join(',')
   const [media] = await pool.query<any[]>(
-    `SELECT id, event_id eventId, alt_text altText FROM event_media WHERE event_id IN (${placeholders}) AND data IS NOT NULL ORDER BY sort_order, id`,
+    `SELECT id, event_id eventId, alt_text altText FROM event_media WHERE event_id IN (${placeholders}) AND data IS NOT NULL AND media_type='IMAGE' ORDER BY sort_order, id`,
     events.map((event) => event.id),
   )
   const mediaByEvent = new Map<string, typeof media>()
@@ -174,7 +192,7 @@ async function exhibitionsWithMedia() {
     ...event,
     registrationOpen: !event.registrationDeadline || new Date(event.registrationDeadline) > new Date(),
     media: (mediaByEvent.get(event.id) ?? []).map((item) => ({
-      id: item.id, altText: item.altText, url: `/api/events/${event.id}/media/${item.id}`,
+      id: item.id, altText: item.altText, mediaType: 'IMAGE', url: `/api/events/${event.id}/media/${item.id}`,
     })),
   }))
 }
@@ -256,7 +274,11 @@ bookingsRouter.get('/exhibit-info', async (_req, res, next) => {
       (SELECT COUNT(*) FROM event_registrations WHERE status='REGISTERED') visitors,
       (SELECT COUNT(*) FROM artist_profiles WHERE status='APPROVED') artists,
       (SELECT COUNT(*) FROM stalls s JOIN events e ON e.id=s.event_id WHERE e.status IN ('PUBLISHED','APPROVED') AND e.ends_at>=NOW() AND s.status='AVAILABLE'
-        AND NOT EXISTS (SELECT 1 FROM stall_bookings b WHERE b.stall_id=s.id AND b.status IN ('CONFIRMED','PAYMENT_PENDING','REFUND_PENDING'))) openStalls`)
+        AND NOT EXISTS (SELECT 1 FROM stall_bookings b WHERE b.stall_id=s.id AND
+          (b.status IN ('CONFIRMED','REFUND_PENDING') OR (b.status='PAYMENT_PENDING' AND EXISTS (
+            SELECT 1 FROM stall_holds h WHERE h.booking_id=b.id AND h.released_at IS NULL AND h.expires_at>NOW()))))
+        AND NOT EXISTS (SELECT 1 FROM stall_holds h WHERE h.stall_id=s.id AND h.booking_id IS NULL
+          AND h.released_at IS NULL AND h.expires_at>NOW())) openStalls`)
     res.json({ stallTypes: types, window, stats })
   } catch (error) { next(error) }
 })
@@ -327,9 +349,106 @@ bookingsRouter.get('/events/:eventId/stalls', async (req, res, next) => {
       stateSpecific ? [req.params.eventId, state] : [req.params.eventId])
     res.json(stalls.map((row) => ({
       id: row.id, code: row.code, state: row.state, location: row.location, sortOrder: row.sortOrder, floorX: row.floorX, floorY: row.floorY,
-      status: stallStatus(row), holdExpiresAt: row.holdExpiresAt ?? null,
+      status: stallStatus(row), holdExpiresAt: row.holdExpiresAt ?? row.selectionHoldExpiresAt ?? null,
       type: { id: row.typeId, code: row.typeCode, name: row.typeName, category: row.category, widthM: row.widthM, depthM: row.depthM, price: row.price, taxRate: row.taxRate, includes: row.includes },
     })))
+  } catch (error) { next(error) }
+})
+
+bookingsRouter.post('/events/:eventId/stalls/:stallId/hold', ...artist, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await withTransaction(async (db) => {
+      const [users] = await db.query<any[]>(
+        "SELECT id, email_verified_at emailVerifiedAt FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE",
+        [req.user!.id])
+      if (!users[0]?.emailVerifiedAt) return fail(403, 'Verify your email address before reserving a stall')
+
+      const [stalls] = await db.query<any[]>(
+        `SELECT s.id, s.status FROM stalls s
+         JOIN events e ON e.id=s.event_id AND e.status IN ('PUBLISHED','APPROVED')
+         JOIN stall_types st ON st.id=s.stall_type_id AND st.active=1
+         LEFT JOIN event_state_stall_pricing statePricing ON statePricing.event_id=s.event_id AND statePricing.state=s.state AND statePricing.stall_type_id=st.id
+         LEFT JOIN event_stall_pricing pricing ON pricing.event_id=s.event_id AND pricing.stall_type_id=st.id
+         WHERE s.id=? AND s.event_id=? AND (
+           (EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+             AND statePricing.event_id IS NOT NULL AND statePricing.public_visible=1)
+           OR (NOT EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+             AND pricing.public_visible=1)
+         ) FOR UPDATE`,
+        [req.params.stallId, req.params.eventId])
+      const stall = stalls[0]
+      if (!stall) return fail(404, 'Stall is not available for this exhibition')
+
+      await db.query(
+        'UPDATE stall_holds SET released_at=NOW() WHERE stall_id=? AND released_at IS NULL AND expires_at<=NOW()',
+        [stall.id])
+      await db.query(
+        'UPDATE stall_holds SET released_at=NOW() WHERE user_id=? AND booking_id IS NULL AND released_at IS NULL AND expires_at<=NOW()',
+        [req.user!.id])
+      await db.query(
+        `UPDATE stall_bookings b SET b.status='EXPIRED'
+         WHERE b.stall_id=? AND b.status='PAYMENT_PENDING'
+           AND NOT EXISTS (SELECT 1 FROM stall_holds h WHERE h.booking_id=b.id
+             AND h.released_at IS NULL AND h.expires_at>NOW())`,
+        [stall.id])
+      await db.query(
+        `UPDATE payments p JOIN stall_bookings b ON b.id=p.booking_id
+         SET p.status='FAILED' WHERE b.stall_id=? AND b.status='EXPIRED' AND p.status='PENDING'`,
+        [stall.id])
+
+      if (stall.status !== 'AVAILABLE') return fail(409, 'Stall is not available')
+      const [bookings] = await db.query<any[]>(
+        "SELECT id FROM stall_bookings WHERE stall_id=? AND status IN ('PAYMENT_PENDING','CONFIRMED','REFUND_PENDING') FOR UPDATE",
+        [stall.id])
+      if (bookings.length) return fail(409, 'That stall was just taken — please choose another')
+
+      const [activeHolds] = await db.query<any[]>(
+        `SELECT id, user_id userId, expires_at expiresAt FROM stall_holds
+         WHERE stall_id=? AND released_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+        [stall.id])
+      const existing = activeHolds[0]
+      if (existing && existing.userId !== req.user!.id) {
+        return fail(409, 'That stall is temporarily held by another exhibitor')
+      }
+
+      const expiresAt = new Date(Date.now() + STALL_SELECTION_HOLD_MINUTES * 60 * 1000)
+      if (existing) {
+        await db.query('UPDATE stall_holds SET expires_at=? WHERE id=?', [expiresAt, existing.id])
+        return done({ id: existing.id, expiresAt: expiresAt.toISOString() })
+      }
+
+      await db.query(
+        'UPDATE stall_holds SET released_at=NOW() WHERE user_id=? AND booking_id IS NULL AND released_at IS NULL',
+        [req.user!.id])
+      const id = crypto.randomUUID()
+      await db.query(
+        'INSERT INTO stall_holds(id,stall_id,application_id,user_id,booking_id,expires_at) VALUES (?,?,NULL,?,NULL,?)',
+        [id, stall.id, req.user!.id, expiresAt])
+      return done({ id, expiresAt: expiresAt.toISOString() })
+    })
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
+    res.status(201).json({ ...result, holdMinutes: STALL_SELECTION_HOLD_MINUTES })
+  } catch (error) {
+    if (isActiveStallDuplicate(error)) return res.status(409).json({ error: 'That stall was just taken — please choose another' })
+    next(error)
+  }
+})
+
+bookingsRouter.delete('/events/:eventId/stalls/:stallId/hold', ...artist, async (req: AuthRequest, res, next) => {
+  try {
+    await withTransaction(async (db) => {
+      const [users] = await db.query<any[]>(
+        'SELECT id FROM users WHERE id=? AND status=? FOR UPDATE',
+        [req.user!.id, 'ACTIVE'])
+      if (!users[0]) return
+      await db.query(
+        `UPDATE stall_holds h JOIN stalls s ON s.id=h.stall_id
+         SET h.released_at=NOW()
+         WHERE h.stall_id=? AND s.event_id=? AND h.user_id=? AND h.booking_id IS NULL
+           AND h.released_at IS NULL`,
+        [req.params.stallId, req.params.eventId, req.user!.id])
+    })
+    res.status(204).end()
   } catch (error) { next(error) }
 })
 
@@ -418,20 +537,19 @@ const applicationInput = z.object({
   specialRequirements: z.string().trim().max(500).default(''),
   artworkAssetIds: z.array(z.string().uuid()).max(10).default([]),
   portfolioAssetId: z.string().uuid().nullable().default(null),
+  stallHoldId: z.string().uuid().nullable().default(null),
   agreeTerms: z.literal(true),
 })
 
 bookingsRouter.post('/applications', ...artist, async (req: AuthRequest, res, next) => {
   try {
     const input = applicationInput.parse(req.body)
-    const [events] = await pool.query<any[]>(
-      `SELECT id, title FROM events WHERE id=? AND status IN ('PUBLISHED','APPROVED') AND (registration_deadline IS NULL OR registration_deadline > NOW())`,
-      [input.eventId])
-    if (!events[0]) return res.status(409).json({ error: 'Exhibition is not open for registration' })
-    const [duplicates] = await pool.query<any[]>(
-      `SELECT id, application_ref FROM exhibition_applications WHERE user_id = ? AND event_id = ? AND status <> 'REJECTED'`,
-      [req.user!.id, input.eventId])
-    if (duplicates.length) return res.status(409).json({ error: 'You already have an application for this exhibition', applicationRef: duplicates[0].application_ref ?? null })
+    if (input.requestedStallId && !input.stallHoldId) {
+      return res.status(409).json({ error: 'Select and temporarily reserve your stall before submitting' })
+    }
+    if (!input.requestedStallId && input.stallHoldId) {
+      return res.status(400).json({ error: 'A stall hold was provided without a selected stall' })
+    }
 
     const artworkAssetIds = [...new Set(input.artworkAssetIds)]
     const wanted = input.portfolioAssetId ? [...artworkAssetIds, input.portfolioAssetId] : artworkAssetIds
@@ -442,19 +560,67 @@ bookingsRouter.post('/applications', ...artist, async (req: AuthRequest, res, ne
         [...wanted, req.user!.id])
       if ((owned as any[]).length !== wanted.length) return res.status(400).json({ error: 'One or more uploads do not belong to this account' })
     }
-    if (input.requestedStallId) {
-      const [rows] = await pool.query<any[]>(
-        `SELECT s.status, (SELECT COUNT(*) FROM stall_bookings b WHERE b.stall_id = s.id AND b.status IN ('PAYMENT_PENDING','CONFIRMED','REFUND_PENDING')) activeBookings
-         FROM stalls s WHERE s.id = ? AND s.event_id = ?`, [input.requestedStallId, input.eventId])
-      const stall = rows[0]
-      if (!stall || stall.status !== 'AVAILABLE' || Number(stall.activeBookings) > 0) return res.status(409).json({ error: 'That stall is no longer available — please pick another' })
-    }
 
     const id = crypto.randomUUID()
     const applicationRef = refCode('THOA')
     const bio = sanitizeBioHtml(input.bio).slice(0, 6000)
     if (bio.replace(/<[^>]*>/g, '').trim().length < 20) return res.status(400).json({ error: 'Please describe your artwork in a little more detail' })
-    await withTransaction(async (db) => {
+    const result = await withTransaction(async (db) => {
+      const [users] = await db.query<any[]>(
+        "SELECT email, email_verified_at emailVerifiedAt FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE",
+        [req.user!.id])
+      const applicant = users[0]
+      if (!applicant?.emailVerifiedAt) return fail(403, 'Verify your email address before submitting an exhibitor application')
+
+      const [events] = await db.query<any[]>(
+        `SELECT id, title FROM events WHERE id=? AND status IN ('PUBLISHED','APPROVED')
+         AND (registration_deadline IS NULL OR registration_deadline > NOW()) FOR UPDATE`,
+        [input.eventId])
+      if (!events[0]) return fail(409, 'Exhibition is not open for registration')
+
+      const [duplicates] = await db.query<any[]>(
+        `SELECT id, application_ref applicationRef FROM exhibition_applications
+         WHERE user_id=? AND event_id=? AND status<>'REJECTED' FOR UPDATE`,
+        [req.user!.id, input.eventId])
+      if (duplicates.length) {
+        return { ...fail(409, 'You already have an application for this exhibition'), applicationRef: duplicates[0].applicationRef ?? null }
+      }
+
+      let heldStall: any = null
+      if (input.requestedStallId && input.stallHoldId) {
+        const [stalls] = await db.query<any[]>(
+          `SELECT s.id, s.status FROM stalls s
+           JOIN events e ON e.id=s.event_id AND e.status IN ('PUBLISHED','APPROVED')
+           JOIN stall_types st ON st.id=s.stall_type_id AND st.active=1
+           LEFT JOIN event_state_stall_pricing statePricing ON statePricing.event_id=s.event_id AND statePricing.state=s.state AND statePricing.stall_type_id=st.id
+           LEFT JOIN event_stall_pricing pricing ON pricing.event_id=s.event_id AND pricing.stall_type_id=st.id
+           WHERE s.id=? AND s.event_id=? AND (
+             (EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+               AND statePricing.event_id IS NOT NULL AND statePricing.public_visible=1)
+             OR (NOT EXISTS(SELECT 1 FROM event_state_stall_pricing configured WHERE configured.event_id=s.event_id)
+               AND pricing.public_visible=1)
+           ) FOR UPDATE`,
+          [input.requestedStallId, input.eventId])
+        heldStall = stalls[0]
+        if (!heldStall || heldStall.status !== 'AVAILABLE') return fail(409, 'That stall is no longer available — please pick another')
+
+        await db.query(
+          `UPDATE stall_holds SET released_at=NOW()
+           WHERE stall_id=? AND released_at IS NULL AND expires_at<=NOW()`,
+          [input.requestedStallId])
+        const [holds] = await db.query<any[]>(
+          `SELECT id FROM stall_holds
+           WHERE id=? AND stall_id=? AND user_id=? AND booking_id IS NULL AND application_id IS NULL
+             AND released_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+          [input.stallHoldId, input.requestedStallId, req.user!.id])
+        if (!holds.length) return fail(409, 'Your 10-minute stall hold expired — please select the stall again')
+
+        const [bookings] = await db.query<any[]>(
+          "SELECT id FROM stall_bookings WHERE stall_id=? AND status IN ('PAYMENT_PENDING','CONFIRMED','REFUND_PENDING') FOR UPDATE",
+          [input.requestedStallId])
+        if (bookings.length) return fail(409, 'That stall was just taken — please pick another')
+      }
+
       await db.query(
         `INSERT INTO exhibition_applications(id,application_ref,user_id,event_id,first_name,last_name,phone,address,website_url,instagram_url,art_form,fascia_name,bio,space_category,preferred_stall_type_id,requested_stall_id,approx_size_sqm,special_requirements,agree_terms,status)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'SUBMITTED')`,
@@ -468,16 +634,28 @@ bookingsRouter.post('/applications', ...artist, async (req: AuthRequest, res, ne
       if (input.portfolioAssetId) {
         await db.query('INSERT INTO application_media(application_id,media_asset_id,kind,sort_order) VALUES (?,?,?,?)', [id, input.portfolioAssetId, 'PORTFOLIO_PDF', 0])
       }
-      const [user] = await db.query<any[]>('SELECT email FROM users WHERE id=?', [req.user!.id])
+      if (input.stallHoldId) {
+        await db.query(
+          'UPDATE stall_holds SET application_id=?, released_at=NOW() WHERE id=? AND user_id=?',
+          [id, input.stallHoldId, req.user!.id])
+      }
       await notify(db, {
-        applicationId: id, email: user[0].email, type: 'application_submitted',
+        applicationId: id, email: applicant.email, type: 'application_submitted',
         subject: `Application ${applicationRef} received — The Haat of Art`,
         text: `We received your exhibitor application ${applicationRef} for ${events[0].title}. Our team will review it and email you the outcome.`,
       })
       await recordAudit(req.user!.id, 'application.create', 'exhibition_application', id, { applicationRef, eventId: input.eventId })
+      return done({ id, applicationRef, status: 'SUBMITTED' })
     })
-    res.status(201).json({ id, applicationRef, status: 'SUBMITTED' })
-  } catch (error) { next(error) }
+    if (!result.ok) {
+      const { ok: _ok, status, error, ...details } = result
+      return res.status(status).json({ error, ...details })
+    }
+    res.status(201).json(result)
+  } catch (error) {
+    if (isActiveStallDuplicate(error)) return res.status(409).json({ error: 'That stall was just taken — please choose another' })
+    next(error)
+  }
 })
 
 bookingsRouter.get('/mine', ...artist, async (req: AuthRequest, res, next) => {
@@ -525,6 +703,11 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
   try {
     const input = z.object({ applicationId: z.string().uuid(), stallId: z.string().uuid() }).parse(req.body)
     const result = await withTransaction(async (db) => {
+      const [users] = await db.query<any[]>(
+        "SELECT id, email_verified_at emailVerifiedAt FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE",
+        [req.user!.id])
+      if (!users[0]?.emailVerifiedAt) return fail(403, 'Verify your email address before booking a stall')
+
       const [apps] = await db.query<any[]>('SELECT * FROM exhibition_applications WHERE id = ? FOR UPDATE', [input.applicationId])
       const app = apps[0]
       if (!app || app.user_id !== req.user!.id) return fail(404, 'Application not found')
@@ -547,11 +730,36 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
       const stall = stalls[0]
       if (!stall) return fail(404, 'Stall not found')
       if (stall.event_id !== app.event_id) return fail(400, 'Stall does not belong to the selected exhibition')
-      await db.query('UPDATE stall_holds SET released_at = NOW() WHERE stall_id = ? AND released_at IS NULL AND expires_at < NOW()', [stall.id])
+      await db.query(
+        'UPDATE stall_holds SET released_at=NOW() WHERE stall_id=? AND released_at IS NULL AND expires_at<=NOW()',
+        [stall.id])
+      await db.query(
+        `UPDATE stall_bookings b SET b.status='EXPIRED'
+         WHERE b.stall_id=? AND b.status='PAYMENT_PENDING'
+           AND NOT EXISTS (SELECT 1 FROM stall_holds h WHERE h.booking_id=b.id
+             AND h.released_at IS NULL AND h.expires_at>NOW())`,
+        [stall.id])
+      await db.query(
+        `UPDATE payments p JOIN stall_bookings b ON b.id=p.booking_id
+         SET p.status='FAILED' WHERE b.stall_id=? AND b.status='EXPIRED' AND p.status='PENDING'`,
+        [stall.id])
       const [taken] = await db.query<any[]>(
-        `SELECT b.id FROM stall_bookings b JOIN stall_holds h ON h.booking_id = b.id AND h.released_at IS NULL AND h.expires_at > NOW()
-         WHERE b.stall_id = ? AND b.status IN ('PAYMENT_PENDING','CONFIRMED') FOR UPDATE`, [stall.id])
+        "SELECT id FROM stall_bookings WHERE stall_id=? AND status IN ('PAYMENT_PENDING','CONFIRMED','REFUND_PENDING') FOR UPDATE",
+        [stall.id])
       if (taken.length) return fail(409, 'Stall was just taken — please pick another')
+
+      const [activeHolds] = await db.query<any[]>(
+        `SELECT id, user_id userId, booking_id bookingId FROM stall_holds
+         WHERE stall_id=? AND released_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+        [stall.id])
+      if (activeHolds.some((hold) => hold.bookingId || hold.userId !== req.user!.id)) {
+        return fail(409, 'Stall is temporarily held by another exhibitor')
+      }
+      if (activeHolds.length) {
+        await db.query(
+          'UPDATE stall_holds SET released_at=NOW() WHERE stall_id=? AND booking_id IS NULL AND user_id=? AND released_at IS NULL',
+          [stall.id, req.user!.id])
+      }
       if (stall.status !== 'AVAILABLE') return fail(409, 'Stall is not available')
 
       const base = Math.round(Number(stall.price) * 100) / 100
@@ -564,8 +772,8 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
          VALUES (?,?,?,?,?,?,?,?,?,?, 'INR', 'PAYMENT_PENDING')`,
         [bookingId, bookingRef, app.id, app.event_id, stall.id, req.user!.id, stall.stall_type_id, base, tax, total])
       const holdExpiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000)
-      await db.query('INSERT INTO stall_holds(id,stall_id,application_id,booking_id,expires_at) VALUES (?,?,?,?,?)',
-        [crypto.randomUUID(), stall.id, app.id, bookingId, holdExpiresAt])
+      await db.query('INSERT INTO stall_holds(id,stall_id,application_id,user_id,booking_id,expires_at) VALUES (?,?,?,?,?,?)',
+        [crypto.randomUUID(), stall.id, app.id, req.user!.id, bookingId, holdExpiresAt])
       await recordAudit(req.user!.id, 'booking.create', 'stall_booking', bookingId, { bookingRef, stallId: stall.id, total })
       return done({ bookingId, bookingRef, totalAmount: total, holdExpiresAt: holdExpiresAt.toISOString(), status: 'PAYMENT_PENDING' })
     })
@@ -573,7 +781,7 @@ bookingsRouter.post('/bookings', ...artist, async (req: AuthRequest, res, next) 
     void alertAdminsOfBooking(result.bookingId).catch(() => undefined)
     res.status(201).json(result)
   } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ER_DUP_ENTRY') {
+    if (isActiveStallDuplicate(error)) {
       return res.status(409).json({ error: 'Stall was just taken — please pick another' })
     }
     next(error)
@@ -752,8 +960,8 @@ bookingsRouter.get('/bookings/:id/receipt', ...artist, async (req: AuthRequest, 
     const [rows] = await pool.query<any[]>(
       `SELECT b.id, b.booking_ref bookingRef, b.status, b.base_amount baseAmount, b.tax_amount taxAmount, b.total_amount totalAmount,
               b.currency, b.created_at createdAt, b.cancellation_reason cancellationReason, b.user_id userId,
-              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, u.email accountEmail,
-              e.title eventTitle, e.city eventCity, e.venue, e.starts_at eventStartsAt, e.ends_at eventEndsAt,
+              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, a.phone, a.address, u.email accountEmail,
+              e.title eventTitle, e.city eventCity, e.state eventState, e.venue, e.starts_at eventStartsAt, e.ends_at eventEndsAt,
               s.code stallCode, s.location stallLocation, st.name stallTypeName, st.width_m widthM, st.depth_m depthM,
               i.invoice_no invoiceNo, i.issued_at invoiceIssuedAt,
               p.transaction_ref transactionRef, p.method paymentMethod, p.status paymentStatus, p.verified_at paymentVerifiedAt,
@@ -778,24 +986,49 @@ bookingsRouter.get('/bookings/:id/receipt', ...artist, async (req: AuthRequest, 
 })
 
 // ---------- admin ----------
+bookingsRouter.get('/admin/locations', ...manage, async (_req, res, next) => {
+  try {
+    const [locations] = await pool.query<any[]>(
+      `SELECT DISTINCT e.city, e.state
+       FROM events e
+       WHERE EXISTS (SELECT 1 FROM exhibition_applications a WHERE a.event_id = e.id)
+          OR EXISTS (SELECT 1 FROM stall_bookings b WHERE b.event_id = e.id)
+       ORDER BY e.state, e.city`)
+    res.json(locations)
+  } catch (error) { next(error) }
+})
+
 bookingsRouter.get('/admin/applications', ...manage, async (req: AuthRequest, res, next) => {
   try {
     const status = z.enum(['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED']).safeParse(req.query.status)
     const eventId = z.string().uuid().safeParse(req.query.eventId)
+    const city = z.string().trim().max(120).safeParse(req.query.city)
+    const state = z.string().trim().max(120).safeParse(req.query.state)
     const q = z.string().trim().max(120).safeParse(req.query.q)
     const where: string[] = []
     const params: unknown[] = []
     if (status.success) { where.push('a.status = ?'); params.push(status.data) }
     if (eventId.success) { where.push('a.event_id = ?'); params.push(eventId.data) }
-    if (q.success && q.data) { where.push('(a.first_name LIKE ? OR a.last_name LIKE ? OR u.email LIKE ? OR a.application_ref LIKE ?)'); const like = `%${q.data}%`; params.push(like, like, like, like) }
+    if (city.success && city.data) { where.push('e.city = ?'); params.push(city.data) }
+    if (state.success && state.data) {
+      where.push("FIND_IN_SET(?, REPLACE(REPLACE(REPLACE(REPLACE(e.state, ';', ','), '/', ','), ', ', ','), ' ,', ',')) > 0")
+      params.push(state.data)
+    }
+    if (q.success && q.data) {
+      where.push('(a.first_name LIKE ? OR a.last_name LIKE ? OR a.phone LIKE ? OR u.email LIKE ? OR a.application_ref LIKE ? OR rs.code LIKE ?)')
+      const like = `%${q.data}%`
+      params.push(like, like, like, like, like, like)
+    }
     const [applications] = await pool.query<any[]>(
       `SELECT a.id, a.application_ref applicationRef, a.status, a.first_name firstName, a.last_name lastName, a.art_form artForm,
               a.space_category spaceCategory, a.created_at createdAt, a.reviewed_at reviewedAt,
-              e.title eventTitle, e.city eventCity, u.email, st.name preferredStallType
+              e.title eventTitle, e.city eventCity, e.state eventState, u.email, st.name preferredStallType,
+              rs.code requestedStallCode, a.phone
        FROM exhibition_applications a
        JOIN events e ON e.id = a.event_id
        JOIN users u ON u.id = a.user_id
        LEFT JOIN stall_types st ON st.id = a.preferred_stall_type_id
+       LEFT JOIN stalls rs ON rs.id = a.requested_stall_id
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY a.created_at DESC LIMIT 300`, params)
     res.json(applications)
@@ -813,7 +1046,7 @@ bookingsRouter.get('/admin/applications/:id', ...manage, async (req, res, next) 
               a.special_requirements specialRequirements, a.agree_terms agreeTerms, a.status,
               a.admin_notes adminNotes, a.reviewed_by reviewedBy, a.reviewed_at reviewedAt,
               a.created_at createdAt, a.updated_at updatedAt,
-              e.title eventTitle, e.city eventCity, e.venue, e.starts_at eventStartsAt, u.email, u.email_verified_at emailVerifiedAt,
+              e.title eventTitle, e.city eventCity, e.state eventState, e.venue, e.starts_at eventStartsAt, u.email, u.email_verified_at emailVerifiedAt,
               st.name preferredStallType, st.price preferredStallPrice, rs.code requestedStallCode, rs.location requestedStallLocation,
               ru.full_name reviewedByName
        FROM exhibition_applications a
@@ -868,13 +1101,30 @@ bookingsRouter.put('/admin/applications/:id/decision', ...manage, async (req: Au
 bookingsRouter.get('/admin/bookings', ...manage, async (req: AuthRequest, res, next) => {
   try {
     const status = z.enum(['PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED']).safeParse(req.query.status)
-    const where = status.success ? 'WHERE b.status = ?' : ''
-    const params = status.success ? [status.data] : []
+    const eventId = z.string().uuid().safeParse(req.query.eventId)
+    const city = z.string().trim().max(120).safeParse(req.query.city)
+    const state = z.string().trim().max(120).safeParse(req.query.state)
+    const q = z.string().trim().max(120).safeParse(req.query.q)
+    const where: string[] = []
+    const params: unknown[] = []
+    if (status.success) { where.push('b.status = ?'); params.push(status.data) }
+    if (eventId.success) { where.push('b.event_id = ?'); params.push(eventId.data) }
+    if (city.success && city.data) { where.push('e.city = ?'); params.push(city.data) }
+    if (state.success && state.data) {
+      where.push("FIND_IN_SET(?, REPLACE(REPLACE(REPLACE(REPLACE(e.state, ';', ','), '/', ','), ', ', ','), ' ,', ',')) > 0")
+      params.push(state.data)
+    }
+    if (q.success && q.data) {
+      where.push('(a.first_name LIKE ? OR a.last_name LIKE ? OR a.phone LIKE ? OR u.email LIKE ? OR a.application_ref LIKE ? OR b.booking_ref LIKE ? OR s.code LIKE ?)')
+      const like = `%${q.data}%`
+      params.push(like, like, like, like, like, like, like)
+    }
     const [bookings] = await pool.query<any[]>(
       `SELECT b.id, b.booking_ref bookingRef, b.status, b.total_amount totalAmount, b.currency, b.created_at createdAt,
-              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, a.phone, u.email,
+              a.application_ref applicationRef, a.first_name firstName, a.last_name lastName, a.phone, a.address, u.email,
               st.name stallType, (SELECT MAX(h.expires_at) FROM stall_holds h WHERE h.booking_id = b.id AND h.released_at IS NULL) holdExpiresAt,
-              e.title eventTitle, s.code stallCode, b.payment_proof_asset_id paymentProofAssetId, pp.mime_type paymentProofMime,
+              e.title eventTitle, e.city eventCity, e.state eventState, e.venue, s.code stallCode, s.location stallLocation,
+              b.payment_proof_asset_id paymentProofAssetId, pp.mime_type paymentProofMime,
               p.id paymentId, p.status paymentStatus, p.method paymentMethod, p.transaction_ref transactionRef, p.amount paidAmount,
               i.invoice_no invoiceNo
        FROM stall_bookings b
@@ -889,7 +1139,7 @@ bookingsRouter.get('/admin/bookings', ...manage, async (req: AuthRequest, res, n
        )
        LEFT JOIN media_assets pp ON pp.id = b.payment_proof_asset_id
        LEFT JOIN invoices i ON i.booking_id = b.id
-       ${where} ORDER BY b.created_at DESC LIMIT 300`, params)
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY b.created_at DESC LIMIT 300`, params)
     res.json(bookings)
   } catch (error) { next(error) }
 })
@@ -1031,7 +1281,7 @@ bookingsRouter.get('/admin/events/:eventId/stalls', ...manage, async (req: AuthR
       floorX: row.floorX,
       floorY: row.floorY,
       status: stallStatus(row),
-      holdExpiresAt: row.holdExpiresAt ?? null,
+      holdExpiresAt: row.holdExpiresAt ?? row.selectionHoldExpiresAt ?? null,
       type: {
         id: row.typeId,
         code: row.typeCode,
@@ -1356,18 +1606,17 @@ bookingsRouter.put('/admin/stall-types/:id', ...manage, async (req: AuthRequest,
 async function expireHolds() {
   const [expired] = await pool.query<any[]>(
     `SELECT h.id, h.booking_id FROM stall_holds h JOIN stall_bookings b ON b.id = h.booking_id
-     WHERE h.released_at IS NULL AND h.expires_at < NOW() AND b.status = 'PAYMENT_PENDING'`)
-  if (!expired.length) {
-    await pool.query('UPDATE stall_holds SET released_at = NOW() WHERE released_at IS NULL AND expires_at < NOW()')
-    return
+     WHERE h.released_at IS NULL AND h.expires_at <= NOW() AND b.status = 'PAYMENT_PENDING'`)
+  if (expired.length) {
+    await withTransaction(async (db) => {
+      for (const row of expired) {
+        await db.query('UPDATE stall_holds SET released_at = NOW() WHERE id = ?', [row.id])
+        await db.query(`UPDATE stall_bookings SET status='EXPIRED' WHERE id=? AND status='PAYMENT_PENDING'`, [row.booking_id])
+        await db.query(`UPDATE payments SET status='FAILED' WHERE booking_id=? AND status='PENDING'`, [row.booking_id])
+      }
+    })
   }
-  await withTransaction(async (db) => {
-    for (const row of expired) {
-      await db.query('UPDATE stall_holds SET released_at = NOW() WHERE id = ?', [row.id])
-      await db.query(`UPDATE stall_bookings SET status='EXPIRED' WHERE id=? AND status='PAYMENT_PENDING'`, [row.booking_id])
-      await db.query(`UPDATE payments SET status='FAILED' WHERE booking_id=? AND status='PENDING'`, [row.booking_id])
-    }
-  })
+  await pool.query('UPDATE stall_holds SET released_at = NOW() WHERE released_at IS NULL AND expires_at <= NOW()')
 }
 
 setInterval(() => { expireHolds().catch((error) => console.error('[hold-expiry]', error instanceof Error ? error.message : error)) }, 30_000).unref()

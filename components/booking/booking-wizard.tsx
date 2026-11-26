@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  apiBaseUrl, bookingApi, formatEventDates, formatMoney, getEventStallTypes, getMine, getStalls, stallSize, stallSquareMeters,
+  apiBaseUrl, bookingApi, formatEventDates, formatMoney, getEventStallTypes, getMine, getStalls, holdStall, releaseStallHold, stallSize, stallSquareMeters,
   taxRatePercent, totalWithTax, uploadApplicationMedia,
   type BookingProfile, type BookingUser, type Exhibition, type MineApplication, type MyBooking, type Stall, type StallType,
 } from '@/lib/booking-api'
@@ -71,6 +71,8 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
   const [stallsLoading, setStallsLoading] = useState(false)
   const [stallsError, setStallsError] = useState('')
   const [stallId, setStallId] = useState('')
+  const [stallHold, setStallHold] = useState<{ id: string; eventId: string; stallId: string; expiresAt: string } | null>(null)
+  const [stallHoldBusy, setStallHoldBusy] = useState(false)
   const [agree, setAgree] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -114,6 +116,52 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
     if (!user) { setMine(null); return }
     try { setMine(await getMine()) } catch { setMine(null) }
   }, [user])
+
+  async function releaseSelectedStall() {
+    if (!stallHold) {
+      setStallId('')
+      return true
+    }
+    setStallHoldBusy(true)
+    try {
+      await releaseStallHold(stallHold.eventId, stallHold.stallId)
+      setStallHold(null)
+      setStallId('')
+      return true
+    } catch (cause) {
+      setStallsError(cause instanceof Error ? cause.message : 'The temporary stall lock could not be released.')
+      return false
+    } finally {
+      setStallHoldBusy(false)
+    }
+  }
+
+  async function selectStall(id: string) {
+    if (!id) {
+      await releaseSelectedStall()
+      return
+    }
+    if (!user || !eventId) {
+      setStallsError('Sign in with your verified email to temporarily lock a stall.')
+      return
+    }
+    setStallHoldBusy(true)
+    setStallsError('')
+    try {
+      const hold = await holdStall(eventId, id)
+      setStallHold({ ...hold, eventId, stallId: id })
+      setStallId(id)
+      try {
+        setStalls(await getStalls(eventId, selectedState))
+      } catch (cause) {
+        setStallsError(cause instanceof Error ? cause.message : 'The latest stall availability could not be refreshed.')
+      }
+    } catch (cause) {
+      setStallsError(cause instanceof Error ? cause.message : 'This stall could not be temporarily reserved.')
+    } finally {
+      setStallHoldBusy(false)
+    }
+  }
 
   useEffect(() => { void loadMine() }, [loadMine])
 
@@ -325,6 +373,12 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
   }
 
   function go(target: Step) {
+    if (target < step && step === 4 && stallHold) {
+      void (async () => {
+        if (await releaseSelectedStall()) setStep(target)
+      })()
+      return
+    }
     if (target > step && !validateStep(target)) return
     setStep(target)
   }
@@ -339,6 +393,8 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
         artworkAssetIds.push((await uploadApplicationMedia(picture.file, 'artwork', picture.file.name)).assetId)
       }
       const portfolioAssetId = portfolio ? (await uploadApplicationMedia(portfolio, 'portfolio', portfolio.name)).assetId : null
+      const activeHold = stallId ? await holdStall(eventId, stallId) : null
+      if (activeHold) setStallHold({ ...activeHold, eventId, stallId })
       const payload = {
         firstName: personal.firstName.trim(), lastName: personal.lastName.trim(), phone: personal.phone.trim(),
         address: personal.address.trim(), websiteUrl: normaliseUrl(art.websiteUrl), instagramUrl: normaliseUrl(art.instagramUrl),
@@ -346,6 +402,7 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
         spaceCategory: prefs.spaceCategory as 'INDIVIDUAL' | 'GROUP' | 'GALLERY',
         preferredStallTypeId: prefs.stallTypeId || null,
         requestedStallId: stallId || null,
+        stallHoldId: activeHold?.id ?? null,
         approxSizeSqm: prefs.approxSize ? Number(prefs.approxSize) : null,
         specialRequirements: prefs.requirements.trim(),
         artworkAssetIds, portfolioAssetId, agreeTerms: true,
@@ -353,6 +410,7 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
       const applied = await bookingApi<{ id: string; applicationRef: string; status: MineApplication['status'] }>(
         '/api/bookings/applications', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...payload, eventId }) },
       )
+      setStallHold(null)
       const list = await getMine()
       const record = list.applications.find((entry) => entry.id === applied.id) ?? {
         id: applied.id, applicationRef: applied.applicationRef, status: applied.status, createdAt: new Date().toISOString(),
@@ -399,15 +457,18 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
             <CityTabs cities={cities} active={city} onChange={setCity} />
             <ExhibitionCards exhibitions={visible} selectedIds={eventIds} mediaBase={apiBaseUrl}
               onToggle={(id) => {
-                if (eventIds[0] === id) {
-                  setEventIds([])
+                void (async () => {
+                  if (!(await releaseSelectedStall())) return
+                  if (eventIds[0] === id) {
+                    setEventIds([])
+                    setStallId('')
+                    return
+                  }
+                  setEventIds([id])
                   setStallId('')
-                  return
-                }
-                setEventIds([id])
-                setStallId('')
-                setErrors({})
-                setStep(1)
+                  setErrors({})
+                  setStep(1)
+                })()
               }} />
             {errors.eventIds && <p className="bw-field-error" role="alert">{errors.eventIds}</p>}
           </section>
@@ -417,7 +478,15 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
       {step > 0 && (
         <section className="bw-wizard" ref={wizardRef}>
           <div className="bw-head">
-            <button className="bw-change-event" type="button" onClick={() => { setEventIds([]); setStallId(''); setErrors({}); setStep(0) }}>
+            <button className="bw-change-event" type="button" onClick={() => {
+              void (async () => {
+                if (!(await releaseSelectedStall())) return
+                setEventIds([])
+                setStallId('')
+                setErrors({})
+                setStep(0)
+              })()
+            }}>
               ← Change exhibition
             </button>
             <img src="/media/logo.png" alt="" aria-hidden="true" />
@@ -546,10 +615,12 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
                   <div className="bw-selected-exhibition-actions">
                     {exhibition && <span className="bw-selected-badge">Selected ✓</span>}
                     <button className="bw-linkbtn" type="button" onClick={() => {
-                      setEventIds([])
-                      setStallId('')
-                      setErrors({})
-                      setStep(0)
+                      void (async () => {
+                        if (!(await releaseSelectedStall())) return
+                        setEventIds([])
+                        setErrors({})
+                        setStep(0)
+                      })()
                     }}>Change exhibition</button>
                   </div>
                 </div>
@@ -558,9 +629,12 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
               {exhibitionStates.length > 1 ? (
                 <Field label="Choose the state for your stall" required>
                   <select value={selectedState} onChange={(event) => {
-                    setSelectedState(event.target.value)
-                    setStallId('')
-                    setPrefs((current) => ({ ...current, stallTypeId: '' }))
+                    const state = event.target.value
+                    void (async () => {
+                      if (!(await releaseSelectedStall())) return
+                      setSelectedState(state)
+                      setPrefs((current) => ({ ...current, stallTypeId: '' }))
+                    })()
                   }}>
                     {exhibitionStates.map((state) => <option key={state} value={state}>{state}</option>)}
                   </select>
@@ -619,9 +693,18 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
                   ) : stallsError ? (
                     <p className="bw-field-error" role="alert">The floor plan could not be loaded: {stallsError}</p>
                   ) : stalls.length > 0 ? (
-                    <StallMap stalls={stalls} selectedId={stallId} onSelect={setStallId}
-                      preferredCategory={spaceOptions.find((option) => option.id === prefs.spaceCategory)?.id}
-                      coverUrl={exhibition.media[0] ? `${apiBaseUrl}${exhibition.media[0].url}` : undefined} coverAlt={exhibition.title} />
+                    <>
+                      <StallMap stalls={stalls} selectedId={stallId} onSelect={(id) => { void selectStall(id) }}
+                        preferredCategory={spaceOptions.find((option) => option.id === prefs.spaceCategory)?.id}
+                        coverUrl={exhibition.media[0] ? `${apiBaseUrl}${exhibition.media[0].url}` : undefined} coverAlt={exhibition.title} />
+                      <p className="bw-hint">A selected stall is locked for 10 minutes while you finish. It is an application request, not a final allocation; availability is checked again after approval.</p>
+                      {stallHold && stallHold.stallId === stallId && (
+                        <p className="bw-profile-note" role="status">
+                          Temporarily locked until {new Date(stallHold.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. This is a request only; final allocation follows approval and booking.
+                        </p>
+                      )}
+                      {stallHoldBusy && <p className="bw-profile-note" role="status">Updating your 10-minute stall lock…</p>}
+                    </>
                   ) : (
                     <div className="bw-priority-allocation">
                       <span className="bw-priority-eyebrow">PERSONAL STALL PLACEMENT</span>
@@ -631,7 +714,11 @@ export function BookingWizard({ exhibitions, initialUser, heroImage, initialStal
                     </div>
                   )}
                   <div className="bw-actions">
-                    <button className="bw-btn-ghost" type="button" onClick={() => setStep(3)}>← Back</button>
+                    <button className="bw-btn-ghost" type="button" onClick={() => {
+                      void (async () => {
+                        if (await releaseSelectedStall()) setStep(3)
+                      })()
+                    }}>← Back</button>
                     {!stallsLoading && !stallsError && stalls.length > 0 && (
                       <button className="bw-btn-primary" type="button" onClick={() => go(5)}>
                         {stall ? `Confirm Booth ${stall.code} & Review →` : 'Continue without a stall →'}

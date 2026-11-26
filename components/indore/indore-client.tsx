@@ -372,6 +372,23 @@ type DigitalPass = {
   preferredVisitDay: string
 }
 
+type VisitorPassRegistration = {
+  fullName: string
+  phone: string
+  email: string
+  state: string
+  city: string
+  passPlan: 'FREE' | 'PAID'
+  preferredVisitDay: string
+  quantity: number
+}
+
+type VerificationRequestResponse = {
+  verificationRequired: boolean
+  email: string
+  message: string
+}
+
 function draftFromConfig(config: NonNullable<LiveEvent['passConfig']>): AdminDraft {
   return {
     passMode: config.passMode,
@@ -527,6 +544,13 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [pass, setPass] = useState<(DigitalPass & { message: string; emailSent: boolean }) | null>(null)
+  const [pendingRegistration, setPendingRegistration] = useState<VisitorPassRegistration | null>(null)
+  const [registrationDraft, setRegistrationDraft] = useState<VisitorPassRegistration | null>(null)
+  const [verificationEmail, setVerificationEmail] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationMessage, setVerificationMessage] = useState('')
+  const [resendAfter, setResendAfter] = useState(0)
+  const [resendSeconds, setResendSeconds] = useState(0)
   const [qrImage, setQrImage] = useState('')
   const [cardImage, setCardImage] = useState('')
   const [adminAllowed, setAdminAllowed] = useState(false)
@@ -549,6 +573,10 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
         setLocationValue(location || eventLocation(selected))
         setVisitDay(dayInputValue(selected.startsAt))
         setPass(null)
+        setPendingRegistration(null)
+        setVerificationEmail('')
+        setVerificationCode('')
+        setVerificationMessage('')
         setError('')
       }
     }
@@ -610,6 +638,17 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
     return () => { active = false }
   }, [pass])
 
+  useEffect(() => {
+    if (!resendAfter) {
+      setResendSeconds(0)
+      return
+    }
+    const updateCountdown = () => setResendSeconds(Math.max(0, Math.ceil((resendAfter - Date.now()) / 1000)))
+    updateCountdown()
+    const timer = window.setInterval(updateCountdown, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendAfter])
+
   const config = adminAllowed ? configFromDraft(adminDraft, baseConfig) : baseConfig
   const freeAvailable = config.freeRemaining !== 0
   const paidAvailable = config.paidRemaining !== 0
@@ -648,8 +687,29 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
     }
   }
 
+  async function requestVerificationCode(registration: VisitorPassRegistration) {
+    if (!selectedEvent) throw new Error('Choose an exhibition before requesting a visitor pass.')
+    const response = await fetch(`${apiBase}/api/passes/public/events/${encodeURIComponent(selectedEvent.slug)}/register`, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify(registration),
+    })
+    const data = await response.json() as Partial<VerificationRequestResponse> & { error?: string }
+    if (!response.ok) throw new Error(data.error || `Could not send your verification code (${response.status}).`)
+    if (data.verificationRequired !== true || !data.message) {
+      throw new Error('The server did not confirm that an email verification code was sent.')
+    }
+    setPendingRegistration(registration)
+    setRegistrationDraft(registration)
+    setVerificationEmail(data.email || registration.email)
+    setVerificationCode('')
+    setVerificationMessage(data.message)
+    setResendAfter(Date.now() + 60_000)
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const formElement = event.currentTarget
     if (!selectedEvent) return
     if (adminDirty) {
       setError('Save the pass settings before testing a registration.')
@@ -657,18 +717,36 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
     }
     setBusy(true)
     setError('')
-    setPass(null)
-    const form = new FormData(event.currentTarget)
-    const placeParts = String(form.get('location') ?? '').split(/[·,]/).map((part) => part.trim()).filter(Boolean)
-    const state = placeParts.length > 1 ? placeParts[0] : splitPlaces(selectedEvent.state)[0] || 'Madhya Pradesh'
-    const city = placeParts.length > 1 ? placeParts.slice(1).join(' · ') : placeParts[0] || eventCity(selectedEvent)
     try {
-      const response = await fetch(`${apiBase}/api/visitor-passes`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          eventSlug: selectedEvent.slug,
+      if (pendingRegistration) {
+        const response = await fetch(`${apiBase}/api/passes/public/events/${encodeURIComponent(selectedEvent.slug)}/verify`, {
+          method: 'POST',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({ email: verificationEmail, code: verificationCode.trim() }),
+        })
+        const data = await response.json() as {
+          error?: string
+          message?: string
+          emailSent?: boolean
+          pass?: DigitalPass
+        }
+        if (!response.ok) throw new Error(data.error || `Could not verify your email (${response.status}).`)
+        if (!data.pass?.passId || !data.pass.passCode || !data.pass.qrData || !data.message) {
+          throw new Error('The server response did not contain a complete verified visitor pass.')
+        }
+        setPass({ ...data.pass, message: data.message, emailSent: data.emailSent === true })
+        setPendingRegistration(null)
+        setVerificationEmail('')
+        setVerificationCode('')
+        setVerificationMessage('')
+        formElement.reset()
+      } else {
+        setPass(null)
+        const form = new FormData(formElement)
+        const placeParts = String(form.get('location') ?? '').split(/[·,]/).map((part) => part.trim()).filter(Boolean)
+        const state = placeParts.length > 1 ? placeParts[0] : splitPlaces(selectedEvent.state)[0] || 'Madhya Pradesh'
+        const city = placeParts.length > 1 ? placeParts.slice(1).join(' · ') : placeParts[0] || eventCity(selectedEvent)
+        const registration: VisitorPassRegistration = {
           fullName: String(form.get('fullName') ?? '').trim(),
           phone: String(form.get('phone') ?? '').trim(),
           email: String(form.get('email') ?? '').trim().toLowerCase(),
@@ -677,22 +755,24 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
           passPlan,
           preferredVisitDay: String(form.get('visitDay') ?? ''),
           quantity: Number(form.get('quantity') ?? 1),
-        }),
-      })
-      const data = await response.json() as {
-        error?: string
-        message?: string
-        emailSent?: boolean
-        pass?: DigitalPass
+        }
+        await requestVerificationCode(registration)
       }
-      if (!response.ok) throw new Error(data.error || `Could not create your visitor pass (${response.status}).`)
-      if (!data.pass?.passId || !data.pass.passCode || !data.pass.qrData || !data.message) {
-        throw new Error('The server response did not contain a complete digital visitor pass.')
-      }
-      setPass({ ...data.pass, message: data.message, emailSent: data.emailSent === true })
-      event.currentTarget.reset()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not create your visitor pass.')
+      setError(cause instanceof Error ? cause.message : 'Could not complete visitor pass registration.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resendVerificationCode() {
+    if (!pendingRegistration || resendSeconds > 0) return
+    setBusy(true)
+    setError('')
+    try {
+      await requestVerificationCode(pendingRegistration)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not resend your verification code.')
     } finally {
       setBusy(false)
     }
@@ -753,6 +833,45 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
           <p>{f.subtitle}</p>
           {selectedEvent ? (
             <form onSubmit={submit}>
+              {pendingRegistration ? (
+                <div className="in-otp-stage" aria-live="polite">
+                  <div className={styles.eventSummary}>
+                    <span className={styles.eventSummaryLabel}>Email verification required</span>
+                    <strong className={styles.eventSummaryTitle}>{selectedEvent.title}</strong>
+                  </div>
+                  <p>A 6-digit code was sent to <strong>{verificationEmail}</strong>. Verify it to issue your QR visitor pass.</p>
+                  {verificationMessage && <p className="in-msg" role="status">{verificationMessage}</p>}
+                  <label>Email verification code *
+                    <input
+                      required
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      pattern="[0-9]{6}"
+                      value={verificationCode}
+                      onChange={(inputEvent) => setVerificationCode(inputEvent.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Enter 6-digit code"
+                    />
+                  </label>
+                  {error && <p className="in-msg" role="alert">{error}</p>}
+                  <button className="in-submit" type="submit" disabled={busy || verificationCode.length !== 6}>
+                    {busy ? 'Verifying your email…' : 'Verify Email & Get Pass'} <ArrowRight size={15} />
+                  </button>
+                  <button className="in-pass-back" type="button" disabled={busy || resendSeconds > 0} onClick={() => void resendVerificationCode()}>
+                    {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend verification code'}
+                  </button>
+                  <button className="in-pass-back" type="button" disabled={busy} onClick={() => {
+                    setPendingRegistration(null)
+                    setVerificationEmail('')
+                    setVerificationCode('')
+                    setVerificationMessage('')
+                    setError('')
+                  }}>
+                    Change registration details
+                  </button>
+                </div>
+              ) : (
+                <>
               {isDetailExperience && (
                 <>
                   <div className={styles.eventSummary}>
@@ -816,6 +935,10 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
                         }
                         setError('')
                         setPass(null)
+                        setPendingRegistration(null)
+                        setVerificationEmail('')
+                        setVerificationCode('')
+                        setVerificationMessage('')
                       }}>
                         {events.map((item) => <option key={item.slug} value={item.slug}>{cleanOptionText(`${eventCity(item)} · ${formatEventDates(item.startsAt, item.endsAt)}`)}</option>)}
                       </select>
@@ -828,9 +951,9 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
                     </label>
                   </>
                 )}
-                <label>Full Name *<input required name="fullName" minLength={2} maxLength={160} placeholder="Enter your full name" autoComplete="name" /></label>
-                <label>Mobile / WhatsApp Number *<input required type="tel" name="phone" placeholder="+91 98765 43210" autoComplete="tel" pattern="[0-9+() -]{10,18}" /></label>
-                <label>Email Address *<input required type="email" name="email" maxLength={255} placeholder="Enter your email" autoComplete="email" /></label>
+                <label>Full Name *<input required name="fullName" minLength={2} maxLength={160} placeholder="Enter your full name" autoComplete="name" defaultValue={registrationDraft?.fullName ?? ''} /></label>
+                <label>Mobile / WhatsApp Number *<input required type="tel" name="phone" placeholder="+91 98765 43210" autoComplete="tel" pattern="[0-9+() -]{10,18}" defaultValue={registrationDraft?.phone ?? ''} /></label>
+                <label>Email Address *<input required type="email" name="email" maxLength={255} placeholder="Enter your email" autoComplete="email" defaultValue={registrationDraft?.email ?? ''} /></label>
                 <label>State / City *<input required name="location" maxLength={120} value={locationValue} onChange={(event) => setLocationValue(event.target.value)} placeholder="Madhya Pradesh · Indore" autoComplete="address-level2" /></label>
                 {isDetailExperience ? (
                   <fieldset className={styles.dayFieldset}>
@@ -859,7 +982,7 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
                 ) : (
                   <label>Visit Day *<input key={selectedEvent.slug} required name="visitDay" type="date" min={dayInputValue(selectedEvent.startsAt)} max={dayInputValue(selectedEvent.endsAt)} value={visitDay} onChange={(event) => setVisitDay(event.target.value)} /></label>
                 )}
-                <label>Number of Passes *<input required name="quantity" type="number" min="1" max="10" defaultValue="1" /></label>
+                <label>Number of Passes *<input required name="quantity" type="number" min="1" max="10" defaultValue={registrationDraft?.quantity ?? 1} /></label>
               </div>
               {!isDetailExperience && (
                 <div className="in-tier-detail" aria-live="polite">
@@ -871,12 +994,14 @@ export function PassForm({ events, initialEventSlug = '', experience = 'standard
               {isDetailExperience && passPlan === 'PAID' && <p className="in-payment-note">Payment collection is not enabled yet. This creates a pending-payment reservation, not an active paid entry pass.</p>}
               {error && <p className="in-msg" role="alert">{error}</p>}
               <button className="in-submit" type="submit" disabled={busy || adminDirty || (!freeEnabled && !paidEnabled)}>
-                {busy ? 'Creating your QR pass…' : passPlan === 'FREE' ? f.button : 'Reserve VIP Pass'} <ArrowRight size={15} />
+                {busy ? 'Sending verification code…' : 'Continue with email verification'} <ArrowRight size={15} />
               </button>
               {adminDirty && <small>Save the admin preview settings before creating a pass.</small>}
               {!freeEnabled && !paidEnabled && <small>This exhibition has reached its current pass capacity.</small>}
-              <small>Free passes are confirmed immediately upon submission.</small>
-              {isDetailExperience && <div className={styles.trust}><TicketCheck size={15} aria-hidden="true" /><span>QR pass generated on screen · Email and WhatsApp notifications when configured · No additional booking fee.</span></div>}
+              <small>Your pass is generated only after verifying the email OTP.</small>
+              {isDetailExperience && <div className={styles.trust}><TicketCheck size={15} aria-hidden="true" /><span>Verify your email first · QR pass shown on screen after confirmation · No additional booking fee.</span></div>}
+                </>
+              )}
             </form>
           ) : (
             <div className="in-no-events"><CalendarDays size={20} /><strong>No exhibitions are open for visitor registration right now.</strong><span>Check back soon or explore our exhibition calendar.</span><Link href="/exhibitions">Explore exhibitions <ArrowRight size={14} /></Link></div>

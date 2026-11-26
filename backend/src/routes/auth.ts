@@ -11,6 +11,7 @@ import { sessionCookieOptions } from '../middleware/session-cookie.js'
 import { createOtp, verifyOtp } from '../services/mailer.js'
 import { recordAudit } from '../services/audit.js'
 import { sessionVersionMatches } from '../services/session-version.js'
+import { createMobileSession, revokeMobileSession, rotateMobileSession } from '../services/mobile-session.js'
 
 export const authRouter = Router()
 const registerSchema = z.object({ email: z.string().email().max(255), password: z.string().min(12).max(128), fullName: z.string().trim().min(2).max(160) })
@@ -62,6 +63,7 @@ const loginLimit = rateLimit({
   validate: { keyGeneratorIpFallback: false },
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 })
+const mobileRefreshLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false })
 const setSession = (res: Response, id: string, sessionVersion: number) => {
   res.cookie('session', issue(id, sessionVersion), sessionCookieOptions())
 }
@@ -108,7 +110,7 @@ async function recentFailedLogins(userId: string) {
   return Number(rows[0]?.c ?? 0)
 }
 
-async function requireLoginOtp(res: Response, user: { id: string; email: string; session_version: number | string }) {
+async function requireLoginOtp(res: Response, user: { id: string; email: string; session_version: number | string }, mobile = false) {
   // A code requested moments ago is still valid, so a cooldown error is not fatal.
   const mail = await createOtp(user.id, 'LOGIN', user.email).catch((error: { status?: number }) => {
     if (error.status === 429) return { delivered: true }
@@ -116,12 +118,94 @@ async function requireLoginOtp(res: Response, user: { id: string; email: string;
   })
   if (!mail.delivered) return res.status(503).json({ error: 'We could not send the verification code. Please try again shortly.' })
   return res.status(403).json({
-    error: `${LOGIN_OTP_MESSAGE} Please complete the sign-in on the /login page.`,
+    error: `${LOGIN_OTP_MESSAGE} Please complete sign-in ${mobile ? 'in the app' : 'on the /login page'}.`,
     message: LOGIN_OTP_MESSAGE,
     mfaRequired: true,
     mfaToken: issueMfaToken(user.id, Number(user.session_version)),
   })
 }
+
+  authRouter.post('/mobile/login', loginIpLimit, loginLimit, async (req, res, next) => {
+    try {
+      const input = z.object({ email: z.string().email().max(255), password: z.string().min(1).max(128) }).parse(req.body)
+      const [rows] = await pool.query<any[]>(
+        'SELECT id,email,password_hash,status,email_verified_at,session_version FROM users WHERE email=?',
+        [input.email.toLowerCase()],
+      )
+      const user = rows[0]
+      const passwordHash = user?.password_hash ?? await dummyPasswordHash
+      const passwordOk = await bcrypt.compare(input.password, passwordHash)
+      const eligible = Boolean(user) && user.status === 'ACTIVE' && Boolean(user.email_verified_at)
+      if (!user || !passwordOk || !eligible) {
+        if (user && eligible && !passwordOk) await recordAudit(user.id, 'LOGIN_FAILED', 'user', user.id)
+        return res.status(401).json({ error: 'Invalid email or password' })
+      }
+      const failures = await recentFailedLogins(user.id)
+      if (failures >= MAX_FAILED_LOGINS) return requireLoginOtp(res, user, true)
+      res.json(await createMobileSession(user.id, Number(user.session_version)))
+    } catch (error) { next(error) }
+  })
+
+  authRouter.post('/mobile/login/verify', otpVerifyLimit, async (req, res, next) => {
+    try {
+      const input = z.object({ mfaToken: z.string().min(20).max(2000), code: z.string().regex(/^\d{6}$/) }).parse(req.body)
+      let userId: string
+      let sessionVersion: number
+      try {
+        const payload = jwt.verify(input.mfaToken, secret(), { algorithms: ['HS256'] }) as { sub?: string; purpose?: string; sessionVersion?: number }
+        if (payload.purpose !== 'mfa' || !payload.sub) throw new Error('wrong token')
+        userId = payload.sub
+        sessionVersion = payload.sessionVersion ?? 0
+      } catch { return res.status(401).json({ error: 'Verification expired. Please sign in again.' }) }
+      const [rows] = await pool.query<any[]>(
+        "SELECT id,session_version FROM users WHERE id=? AND status='ACTIVE' AND email_verified_at IS NOT NULL",
+        [userId],
+      )
+      if (!rows[0] || !sessionVersionMatches(sessionVersion, rows[0].session_version)) {
+        return res.status(401).json({ error: 'Verification expired. Please sign in again.' })
+      }
+      if (!(await verifyOtp(userId, 'LOGIN', input.code))) return res.status(400).json({ error: 'Invalid or expired verification code.' })
+      await recordAudit(userId, 'LOGIN_RESET', 'user', userId)
+      res.json(await createMobileSession(userId, Number(rows[0].session_version)))
+    } catch (error) { next(error) }
+  })
+
+  authRouter.post('/mobile/verify-email', otpVerifyLimit, async (req, res, next) => {
+    try {
+      const input = z.object({ email: z.string().email().max(255), code: z.string().regex(/^\d{6}$/) }).parse(req.body)
+      const email = input.email.toLowerCase()
+      const [users] = await pool.query<any[]>(
+        'SELECT id,status,email_verified_at,session_version FROM users WHERE email=?',
+        [email],
+      )
+      const user = users[0]
+      if (!user || user.status === 'SUSPENDED') return res.status(400).json({ error: 'Invalid or expired verification code.' })
+      if (user.email_verified_at) return res.status(409).json({ error: 'This email address is already verified. Please sign in.' })
+      if (!(await verifyOtp(user.id, 'VERIFY_EMAIL', input.code))) {
+        return res.status(400).json({ error: 'Invalid or expired verification code.' })
+      }
+      await pool.query("UPDATE users SET email_verified_at=NOW(),status='ACTIVE' WHERE id=?", [user.id])
+      await pool.query('UPDATE visitor_profiles SET email_verified_at=NOW() WHERE email=?', [email])
+      res.json(await createMobileSession(user.id, Number(user.session_version)))
+    } catch (error) { next(error) }
+  })
+
+  authRouter.post('/mobile/refresh', mobileRefreshLimit, async (req, res, next) => {
+    try {
+      const input = z.object({ refreshToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(req.body)
+      const tokens = await rotateMobileSession(input.refreshToken)
+      if (!tokens) return res.status(401).json({ error: 'Mobile session expired. Please sign in again.' })
+      res.json(tokens)
+    } catch (error) { next(error) }
+  })
+
+  authRouter.post('/mobile/logout', async (req, res, next) => {
+    try {
+      const input = z.object({ refreshToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(req.body)
+      await revokeMobileSession(input.refreshToken)
+      res.status(204).end()
+    } catch (error) { next(error) }
+  })
 
 authRouter.post('/login', loginIpLimit, loginLimit, async (req, res, next) => {
   try {

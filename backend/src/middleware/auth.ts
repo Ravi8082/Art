@@ -13,9 +13,17 @@ const secret = () => {
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   let payload: { sub?: string; sessionVersion?: number }
   try {
-    const token = req.signedCookies.session as string | undefined
+    const authorization = req.get('authorization')
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]
+    const token = bearerToken ?? (req.signedCookies.session as string | undefined)
     if (!token) return res.status(401).json({ error: 'Authentication required' })
     payload = jwt.verify(token, secret(), { algorithms: ['HS256'] }) as { sub?: string; sessionVersion?: number }
+    if (bearerToken && (payload as typeof payload & { tokenUse?: string }).tokenUse !== 'mobile_access') {
+      return res.status(401).json({ error: 'Invalid session' })
+    }
+    if (!bearerToken && (payload as typeof payload & { tokenUse?: string }).tokenUse) {
+      return res.status(401).json({ error: 'Invalid session' })
+    }
   } catch {
     return res.status(401).json({ error: 'Invalid session' })
   }

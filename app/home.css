@@ -477,6 +477,9 @@
 .in-tile:nth-of-type(5) { display: none; }
 .in-form { background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 8px 26px rgba(120,70,30,.14); display: grid; gap: 10px; align-content: start; }
 .in-form form { display: grid; gap: 10px; }
+.in-otp-stage { display: grid; gap: 10px; }
+.in-otp-stage > p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--th-muted); }
+.in-otp-stage label { display: grid; gap: 4px; font-size: 11px; font-weight: 600; color: var(--th-navy); }
 .in-form h2 { margin: 0; font: 700 clamp(20px, 2.2vw, 26px) var(--font-playfair), serif; color: var(--th-navy); }
 .in-form h2 em { color: var(--th-orange); font-style: normal; }
 .in-form > p { margin: 0; font-size: 12.5px; color: var(--th-muted); }

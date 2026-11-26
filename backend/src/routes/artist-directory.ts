@@ -1,9 +1,11 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { pool } from '../db/pool.js'
 import { cachePublic } from '../middleware/cache.js'
+import { pageMetadata, paginationRequested, publicPaginationSchema } from '../services/public-pagination.js'
 
 export const artistDirectoryRouter = Router()
-const publicCache = cachePublic(300)
+const publicCache = cachePublic(30)
 
 const artistFields = `
   SELECT a.id, a.slug, a.display_name displayName, a.city, a.medium, a.specialty, a.bio,
@@ -29,27 +31,54 @@ function serializeArtist(artist: any) {
   }
 }
 
-artistDirectoryRouter.get('/', publicCache, async (_req, res, next) => {
+artistDirectoryRouter.get('/', publicCache, async (req, res, next) => {
   try {
-    const [artists] = await pool.query<any[]>(`${artistFields} ORDER BY a.sort_order, a.display_name LIMIT 200`)
-    res.json(artists.map(serializeArtist))
+    const isPaginated = paginationRequested(req.query)
+    const pagination = publicPaginationSchema.safeParse(req.query)
+    if (!pagination.success) return res.status(400).json({ error: 'Invalid artist list query' })
+    const { page, pageSize } = pagination.data
+    const pageClause = isPaginated ? 'LIMIT ? OFFSET ?' : 'LIMIT 200'
+    const [artists] = await pool.query<any[]>(
+      `${artistFields} ORDER BY a.sort_order, a.display_name ${pageClause}`,
+      isPaginated ? [pageSize, (page - 1) * pageSize] : [],
+    )
+    const items = artists.map(serializeArtist)
+    if (!isPaginated) return res.json(items)
+    const [[count]] = await pool.query<any[]>('SELECT COUNT(*) total FROM artist_directory')
+    res.json({
+      artists: items,
+      ...pageMetadata(page, pageSize, Number(count.total)),
+    })
   } catch (error) { next(error) }
 })
 
-artistDirectoryRouter.get('/curated-gallery', publicCache, async (_req, res, next) => {
+artistDirectoryRouter.get('/curated-gallery', publicCache, async (req, res, next) => {
   try {
+    const isPaginated = paginationRequested(req.query)
+    const pagination = publicPaginationSchema.safeParse(req.query)
+    if (!pagination.success) return res.status(400).json({ error: 'Invalid gallery list query' })
+    const { page, pageSize } = pagination.data
+    const pageClause = isPaginated ? 'LIMIT ? OFFSET ?' : ''
     const [artworks] = await pool.query<any[]>(`
       SELECT work.id, work.title, artist.id artistId, artist.display_name artistName, artist.slug artistSlug,
              work.medium, work.dimensions, work.year_made year, work.city, work.price_amount price,
              work.status, work.description, work.image_url imageUrl
       FROM curated_gallery_artworks work
       JOIN artist_directory artist ON artist.id = work.artist_id
-      ORDER BY work.sort_order, work.title`)
-    res.json(artworks.map((work) => ({
+      ORDER BY work.sort_order, work.title
+      ${pageClause}
+    `, isPaginated ? [pageSize, (page - 1) * pageSize] : [])
+    const items = artworks.map((work) => ({
       ...work,
       year: Number(work.year),
       price: Number(work.price),
-    })))
+    }))
+    if (!isPaginated) return res.json(items)
+    const [[count]] = await pool.query<any[]>('SELECT COUNT(*) total FROM curated_gallery_artworks')
+    res.json({
+      artworks: items,
+      ...pageMetadata(page, pageSize, Number(count.total)),
+    })
   } catch (error) { next(error) }
 })
 

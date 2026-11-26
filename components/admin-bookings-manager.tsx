@@ -25,8 +25,11 @@ interface ApplicationRow {
   reviewedAt: string | null
   eventTitle: string
   eventCity: string
+  eventState: string | null
   email: string
+  phone: string | null
   preferredStallType: string | null
+  requestedStallCode: string | null
 }
 
 interface ApplicationMediaItem {
@@ -67,6 +70,7 @@ interface ApplicationDetail {
   createdAt: string
   eventTitle: string
   eventCity: string
+  eventState: string | null
   venue: string | null
   eventStartsAt: string
   email: string
@@ -89,7 +93,12 @@ interface BookingRow {
   stallType?: string | null
   holdExpiresAt?: string | null
   eventTitle: string
+  eventCity: string
+  eventState: string
+  venue: string | null
   stallCode: string
+  stallLocation: string | null
+  address: string | null
   paymentId: string | null
   paymentStatus: string | null
   paymentMethod: string | null
@@ -104,12 +113,18 @@ interface ExhibitionOption {
   id: string
   title: string
   city: string
+  state: string | null
   venue: string | null
   startsAt: string
   endsAt: string
   availableStalls: number
   totalStalls: number
   registrationOpen: boolean
+}
+
+interface LocationOption {
+  city: string | null
+  state: string | null
 }
 
 interface VerifyResult {
@@ -138,6 +153,7 @@ interface ReceiptResponse {
   currency?: string | null
   eventTitle?: string | null
   eventCity?: string | null
+  eventState?: string | null
   venue?: string | null
   eventStartsAt?: string | null
   eventEndsAt?: string | null
@@ -157,6 +173,8 @@ interface ReceiptResponse {
   first_name?: string | null
   lastName?: string | null
   last_name?: string | null
+  phone?: string | null
+  address?: string | null
   email?: string | null
   accountEmail?: string | null
   createdAt?: string | null
@@ -171,6 +189,7 @@ interface ReceiptView {
   totalAmount: string
   eventTitle: string
   eventCity: string
+  eventState: string
   venue: string
   schedule: string
   stall: string
@@ -182,6 +201,8 @@ interface ReceiptView {
   paymentVerifiedAt: string
   applicant: string
   email: string
+  phone: string
+  address: string
   applicationRef: string
   createdAt: string
 }
@@ -336,6 +357,7 @@ function normalizeReceipt(input: ReceiptResponse): ReceiptView {
     totalAmount: amount(input.totalAmount ?? input.total_amount),
     eventTitle: text(input.eventTitle),
     eventCity: text(input.eventCity),
+    eventState: text(input.eventState),
     venue: text(input.venue),
     schedule,
     stall,
@@ -347,6 +369,8 @@ function normalizeReceipt(input: ReceiptResponse): ReceiptView {
     paymentVerifiedAt: shortDate(input.paymentVerifiedAt),
     applicant: [text(input.firstName) || text(input.first_name), text(input.lastName) || text(input.last_name)].filter(Boolean).join(' '),
     email: text(input.email) || text(input.accountEmail),
+    phone: text(input.phone),
+    address: text(input.address),
     applicationRef: text(input.applicationRef),
     createdAt: shortDate(input.createdAt ?? input.created_at),
   }
@@ -468,11 +492,14 @@ export function AdminBookingsManager() {
 
   const [applications, setApplications] = useState<ApplicationRow[]>([])
   const [exhibitions, setExhibitions] = useState<ExhibitionOption[]>([])
+  const [adminLocations, setAdminLocations] = useState<LocationOption[]>([])
   const [bookings, setBookings] = useState<BookingRow[]>([])
   const [loaded, setLoaded] = useState(false)
 
   const [statusFilter, setStatusFilter] = useState<'' | ApplicationStatus>('')
   const [eventFilter, setEventFilter] = useState('')
+  const [cityFilter, setCityFilter] = useState('')
+  const [stateFilter, setStateFilter] = useState('')
   const [dateFilter, setDateFilter] = useState('')
   const [searchDraft, setSearchDraft] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -500,20 +527,34 @@ export function AdminBookingsManager() {
     setExhibitions(await response.json() as ExhibitionOption[])
   }, [])
 
+  const loadAdminLocations = useCallback(async () => {
+    const response = await api('/api/bookings/admin/locations', { cache: 'no-store' })
+    setAdminLocations(await response.json() as LocationOption[])
+  }, [])
+
   const loadApplications = useCallback(async () => {
     const params = new URLSearchParams()
     if (statusFilter) params.set('status', statusFilter)
     if (eventFilter) params.set('eventId', eventFilter)
+    if (cityFilter) params.set('city', cityFilter)
+    if (stateFilter) params.set('state', stateFilter)
     if (searchTerm) params.set('q', searchTerm)
     const query = params.toString()
     const response = await api(`/api/bookings/admin/applications${query ? `?${query}` : ''}`, { cache: 'no-store' })
     setApplications(await response.json() as ApplicationRow[])
-  }, [statusFilter, eventFilter, searchTerm])
+  }, [statusFilter, eventFilter, cityFilter, stateFilter, searchTerm])
 
   const loadBookings = useCallback(async () => {
-    const response = await api(`/api/bookings/admin/bookings${bookingFilter ? `?status=${bookingFilter}` : ''}`, { cache: 'no-store' })
+    const params = new URLSearchParams()
+    if (bookingFilter) params.set('status', bookingFilter)
+    if (eventFilter) params.set('eventId', eventFilter)
+    if (cityFilter) params.set('city', cityFilter)
+    if (stateFilter) params.set('state', stateFilter)
+    if (searchTerm) params.set('q', searchTerm)
+    const query = params.toString()
+    const response = await api(`/api/bookings/admin/bookings${query ? `?${query}` : ''}`, { cache: 'no-store' })
     setBookings(await response.json() as BookingRow[])
-  }, [bookingFilter])
+  }, [bookingFilter, eventFilter, cityFilter, stateFilter, searchTerm])
 
   const loadApplicationDetail = useCallback(async (id: string) => {
     const response = await api(`/api/bookings/admin/applications/${id}`, { cache: 'no-store' })
@@ -529,20 +570,17 @@ export function AdminBookingsManager() {
     fetch(`${apiBaseUrl}/api/auth/me`, { credentials: 'include' })
       .then(async (response) => {
         setChecked(true)
-        if (response.ok) {
-          setSignedIn(true)
-          await loadExhibitions().catch(handleLoadError)
-        }
+        if (response.ok) setSignedIn(true)
       })
       .catch(() => setChecked(true))
-  }, [loadExhibitions, handleLoadError])
+  }, [])
 
   useEffect(() => {
     if (!signedIn) return
-    void Promise.all([loadApplications(), loadBookings()])
+    void Promise.all([loadExhibitions(), loadAdminLocations(), loadApplications(), loadBookings()])
       .catch(handleLoadError)
       .finally(() => setLoaded(true))
-  }, [signedIn, loadApplications, loadBookings, handleLoadError])
+  }, [signedIn, loadExhibitions, loadAdminLocations, loadApplications, loadBookings, handleLoadError])
 
   useEffect(() => {
     const timer = setTimeout(() => setSearchTerm(searchDraft.trim()), 400)
@@ -662,6 +700,12 @@ export function AdminBookingsManager() {
     return applications.filter((row) => dayKey(row.createdAt) === dateFilter)
   }, [applications, dateFilter])
 
+  const states = useMemo(() => [...new Set(adminLocations.flatMap((location) => text(location.state).split(/[,;/]/).map((value) => value.trim()).filter(Boolean)))].sort(), [adminLocations])
+  const cities = useMemo(() => [...new Set(adminLocations
+    .filter((location) => !stateFilter || text(location.state).split(/[,;/]/).some((value) => value.trim() === stateFilter))
+    .map((location) => text(location.city))
+    .filter(Boolean))].sort(), [adminLocations, stateFilter])
+
   const selectedBooking = useMemo(() => bookings.find((row) => row.id === selectedBookingId) ?? null, [bookings, selectedBookingId])
   const pendingPayment = useMemo(() => {
     if (!selectedBooking) return null
@@ -775,7 +819,7 @@ export function AdminBookingsManager() {
                 <Field label="Full Name" value={[application.firstName, application.lastName].filter(Boolean).join(' ')} />
                 <Field label="Email" value={text(application.email) ? <a className="abm-link" href={`mailto:${application.email}`}>{application.email}</a> : ''} />
                 <Field label="Email Verified" value={application.emailVerifiedAt ? longDate(application.emailVerifiedAt) : 'Not verified'} />
-                <Field label="Phone" value={application.phone} />
+                <Field label="Phone" value={application.phone ? <span className="abm-contact"><a className="abm-link" href={`tel:${application.phone}`}>{application.phone}</a>{' · '}<a className="abm-link" href={`https://wa.me/${application.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">WhatsApp</a></span> : ''} />
                 <Field label="Art Form" value={application.artForm} />
                 <Field label="Fascia / Studio Name" value={application.fasciaName} />
                 <Field label="Space Category" value={titleCase(application.spaceCategory)} />
@@ -783,7 +827,7 @@ export function AdminBookingsManager() {
                 <Field label="Website" value={text(application.websiteUrl) ? <a className="abm-link" href={application.websiteUrl ?? '#'} target="_blank" rel="nofollow noopener noreferrer">{application.websiteUrl}</a> : ''} />
                 <Field label="Instagram" value={text(application.instagramUrl) ? <a className="abm-link" href={application.instagramUrl ?? '#'} target="_blank" rel="nofollow noopener noreferrer">{application.instagramUrl}</a> : ''} />
                 <Field label="Applied On" value={longDate(application.createdAt)} />
-                <Field label="Exhibition" value={[application.eventTitle, application.eventCity].filter(Boolean).join(' · ')} />
+                <Field label="Exhibition" value={[application.eventTitle, application.eventCity, application.eventState].filter(Boolean).join(' · ')} />
                 <Field label="Venue" value={application.venue} />
                 <Field label="Exhibition Starts" value={shortDate(application.eventStartsAt)} />
               </div>
@@ -831,7 +875,7 @@ export function AdminBookingsManager() {
             <div className="abm-panel">
               <h3 className="abm-panel-title">Requested Stall</h3>
               <div className="abm-fields">
-                <Field label="Exhibition" value={[application.eventTitle, application.eventCity].filter(Boolean).join(' · ')} />
+                <Field label="Exhibition" value={[application.eventTitle, application.eventCity, application.eventState].filter(Boolean).join(' · ')} />
                 <Field
                   label="Stall Type"
                   value={hasNumber(application.preferredStallPrice) && text(application.preferredStallType)
@@ -904,6 +948,20 @@ export function AdminBookingsManager() {
               <span>Date</span>
               <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
             </label>
+            <label>
+              <span>State</span>
+              <select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value); setCityFilter('') }}>
+                <option value="">All States</option>
+                {states.map((state) => <option key={state} value={state}>{state}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>City</span>
+              <select value={cityFilter} onChange={(event) => setCityFilter(event.target.value)}>
+                <option value="">All Cities</option>
+                {cities.map((city) => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </label>
             <label className="abm-search">
               <span>Search</span>
               <input
@@ -928,7 +986,7 @@ export function AdminBookingsManager() {
                       <span className="abm-strong">{[row.firstName, row.lastName].filter(Boolean).join(' ') || row.applicationRef}</span>
                       <small>{row.applicationRef}{row.artForm ? ` · ${row.artForm}` : ''}</small>
                     </td>
-                    <td>{text(row.eventCity) || text(row.eventTitle) || '—'}</td>
+                    <td>{[text(row.eventCity), text(row.eventState)].filter(Boolean).join(', ') || text(row.eventTitle) || '—'}</td>
                     <td>{shortDate(row.createdAt) || '—'}</td>
                     <td><Pill status={row.status} /></td>
                     <td className="abm-actions">
@@ -966,6 +1024,36 @@ export function AdminBookingsManager() {
           ))}
         </div>
 
+        <div className="abm-filters abm-booking-location-filters">
+          <label>
+            <span>State</span>
+            <select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value); setCityFilter('') }}>
+              <option value="">All States</option>
+              {states.map((state) => <option key={state} value={state}>{state}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>City</span>
+            <select value={cityFilter} onChange={(event) => setCityFilter(event.target.value)}>
+              <option value="">All Cities</option>
+              {cities.map((city) => <option key={city} value={city}>{city}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Exhibition</span>
+            <select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)}>
+              <option value="">All Exhibitions</option>
+              {exhibitions.map((exhibition) => (
+                <option key={exhibition.id} value={exhibition.id}>{exhibition.title}{exhibition.city ? ` — ${exhibition.city}` : ''}</option>
+              ))}
+            </select>
+          </label>
+          <label className="abm-search">
+            <span>Search</span>
+            <input value={searchDraft} maxLength={120} placeholder="Applicant, booking or stall" onChange={(event) => setSearchDraft(event.target.value)} />
+          </label>
+        </div>
+
         <div className="abm-scroll">
           <table className="apm-table abm-table">
             <thead>
@@ -993,8 +1081,8 @@ export function AdminBookingsManager() {
                         </small>
                       )}
                     </td>
-                    <td>{text(row.eventTitle) || '—'}</td>
-                    <td>{text(row.stallCode) || '—'}{text(row.stallType) && <small>{row.stallType}</small>}</td>
+                    <td>{text(row.eventTitle) || '—'}<small>{[text(row.eventCity), text(row.eventState)].filter(Boolean).join(', ')}</small></td>
+                    <td>{text(row.stallCode) || '—'}<small>{[text(row.stallType), text(row.stallLocation)].filter(Boolean).join(' · ')}</small></td>
                     <td className="abm-amount">{money(row.totalAmount)}</td>
                     <td><Pill status={badge.status} label={badge.label} /></td>
                     <td className="abm-actions">
@@ -1053,8 +1141,10 @@ export function AdminBookingsManager() {
                   <Field label="Booking Status" value={receipt.status ? <Pill status={receipt.status} /> : ''} />
                   <Field label="Application" value={receipt.applicationRef} />
                   <Field label="Exhibitor" value={receipt.applicant} />
-                  <Field label="Email" value={receipt.email} />
-                  <Field label="Exhibition" value={[receipt.eventTitle, receipt.eventCity].filter(Boolean).join(' · ')} />
+                  <Field label="Email" value={receipt.email ? <a className="abm-link" href={`mailto:${receipt.email}`}>{receipt.email}</a> : ''} />
+                  <Field label="Phone" value={receipt.phone ? <span className="abm-contact"><a className="abm-link" href={`tel:${receipt.phone}`}>{receipt.phone}</a>{' · '}<a className="abm-link" href={`https://wa.me/${receipt.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">WhatsApp</a></span> : ''} />
+                  <Field label="Address" value={receipt.address} />
+                  <Field label="Exhibition" value={[receipt.eventTitle, receipt.eventCity, receipt.eventState].filter(Boolean).join(' · ')} />
                   <Field label="Venue" value={receipt.venue} />
                   <Field label="Dates" value={receipt.schedule} />
                   <Field label="Stall" value={receipt.stall} />

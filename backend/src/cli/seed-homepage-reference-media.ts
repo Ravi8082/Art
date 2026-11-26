@@ -6,6 +6,7 @@ import { pool } from '../db/pool.js'
 
 const mediaDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public/media/homepage-reference')
 const mediaDefaults = [
+  { key: 'logo', file: '../logo.png', alt: 'The Haat of Art logo' },
   { key: 'hero', file: 'hero.png', alt: 'Visitors exploring The Haat of Art exhibition' },
   { key: 'exhibition1', file: 'exhibition1.png', alt: 'Art exhibition venue' },
   { key: 'exhibition2', file: 'exhibition2.png', alt: 'Art exhibition venue' },
@@ -46,6 +47,7 @@ const replaceableAltText = new Set([
   'Visitors exploring The Haat of Art exhibition',
   'Visitors exploring The Haat of Art gallery',
   'The Haat of Art mentor',
+  'The Haat of Art logo',
   'Art exhibitions',
   'Live painting',
   'Visitor workshops',
@@ -60,7 +62,10 @@ const replaceableAltText = new Set([
 ])
 
 async function seedHomepageReferenceMedia() {
-  for (const media of mediaDefaults) {
+  const targets = process.argv.includes('--logo-only')
+    ? mediaDefaults.filter((media) => media.key === 'logo')
+    : mediaDefaults
+  for (const media of targets) {
     const [existing] = await pool.query<(RowDataPacket & { altText: string })[]>(
       'SELECT alt_text AS altText FROM homepage_media WHERE media_key=?',
       [media.key],
